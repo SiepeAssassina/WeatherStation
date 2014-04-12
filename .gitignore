@@ -213,3 +213,6 @@ pip-log.txt
 
 #Mr Developer
 .mr.developer.cfg
+*.csproj
+PC/SerialConsole/SerialConsole/Properties/AssemblyInfo.cs
+*.sln
