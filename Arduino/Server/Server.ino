@@ -1,28 +1,27 @@
 //Server
+//WAITING: uP waits until it gets any byte on buffer then reads it and if he gets two consequents 'A' the state is switched to
+//LISTENING: uP heard the preamble, sending back an ACK byte (0x0), awaits an answer
+//DATA_RX: uP is set to receive DATA from the station
+//DATA_TX: uP is set to send DATA to the PC 
+//TIME_SET: uP gets the time sent from the PC
 #include <Time.h>
 #define WAITING 0
-#define DATA_RX 1  //Client -> Server 
-#define DATA_TX 2  //Server -> PC
-#define TIME_SET 3
+#define LISTENING 1
+#define DATA_RX 2  //Client -> Server 
+#define DATA_TX 3  //Server -> PC
+#define TIME_SET 4
 #define SENSORS 4
-byte hh = 0, mm = 0, ss = 0;
+
 struct sensorData
 {
-  char adress;    //0-5 1byte
-  unsigned short value; //0-1023 2byte  
-};
-sensorData data[4] = {
-  {
-    0, 1023        }
-  , {
-    1, 511        }
-  , {
-    2, 255        }
-  , {
-    3, 127        }
+  byte time[4];  
+  unsigned short value[4]; //0-1023 2 byte  
 };
 
+byte hh = 0, mm = 0, ss = 0;
+sensorData Data;
 char serialState = WAITING;
+
 void setup()
 {
   Serial.begin(1200, SERIAL_8E1);
@@ -32,34 +31,48 @@ void setup()
 }
 
 void loop()
-{  
+{    
   //byte timeFigures[4] = {hour() / 10, hour() % 10, minute() / 10, minute() % 10};
-  waitForPreamble(); 
-  while(serialState != WAITING)
+  switch(serialState)
   {
-    switch(serialState)
+  case WAITING:
     {
-    case DATA_RX:
-      {
-        break;
-      }
-    case DATA_TX:      
-      {
-         digitalWrite(13, 1);
-        sendSensorData();
-        serialState = WAITING;
-        digitalWrite(13, 0);
-        break;
-      }
-    case TIME_SET:
-      {
-        digitalWrite(13, 1);
-        getSerialTime();
-        digitalWrite(13, 0);
-        break;
-      }
-    } 
-  }
+      digitalWrite(13,0);
+      waitForPreamble();
+      break;
+    }
+  case LISTENING:
+    {
+      digitalWrite(13, 1);
+      getOperatingMode();
+      digitalWrite(13, 0);
+      break;
+    }
+  case DATA_RX:
+    {
+      digitalWrite(13,1);
+      receiveSensorData();
+      serialState = WAITING;
+      digitalWrite(13,0);
+      break;
+    }
+  case DATA_TX:      
+    {
+      digitalWrite(13, 1);
+      sendSensorData();
+      serialState = WAITING;
+      digitalWrite(13, 0);
+      break;
+    }
+  case TIME_SET:
+    {
+      digitalWrite(13, 1);
+      getSerialTime();
+      serialState = WAITING;
+      digitalWrite(13, 0);
+      break;
+    }
+  }   
 }
 
 void waitForSerial()
@@ -69,31 +82,49 @@ void waitForSerial()
 
 void waitForPreamble()
 {
-  while(Serial.available() == 3)
+  if(Serial.read() == 'A')
   {
-    if(Serial.read() == 'A' && Serial.read() == 'A')
-    {
-      switch(Serial.read())
-      {
-      case 'P':
-        {
-          serialState = DATA_TX;
-          break;
-        }
-      case 'T':
-        {
-          serialState = TIME_SET;
-          break;
-        }
-      }      
-      digitalWrite(13, 1);
-    }     
+    waitForSerial();
+    if(Serial.read() == 'A')
+    { 
+      serialState = LISTENING;    
+    }
   }
 }
 
-void receiveData()
-{
+void getOperatingMode()
+{  
+  Serial.write(0x0);
+  waitForSerial();
+  switch(Serial.read())
+  {
+  case 'P':
+    {
+      serialState = DATA_TX;
+      break;
+    }
+  case 'T':
+    {
+      serialState = TIME_SET;
+      break;
+    }
+  }
+}
 
+void receiveSensorData()
+{  
+  unsigned short _buffer;
+  byte _address; 
+  for(int i = 0; i < SENSORS; i++)
+  {   
+    waitForSerial();
+    _address = Serial.read();   
+    waitForSerial();
+    _buffer = (Serial.read() & 0x3) << 8;    
+    waitForSerial();
+    _buffer += Serial.read() & 0xFF;  
+    Data.value[_address] = _buffer;
+  }
 }
 
 void sendSensorData()
@@ -102,13 +133,13 @@ void sendSensorData()
   delay(10);
   for(int i = 0; i < SENSORS; i++)
   {   
-    Serial.write(data[i].adress);
+    Serial.write(i);
     delay(100);
-    Serial.write((data[i].value & 0x300) >> 8);
+    Serial.write((Data.value[i] & 0x300) >> 8);
     delay(100);
-    Serial.write(data[i].value & 0xFF);
+    Serial.write(Data.value[i] & 0xFF);
     delay(100);
-  }
+  }  
 }
 
 void getSerialTime()
@@ -120,6 +151,15 @@ void getSerialTime()
   setTime(hh, mm, ss, 00, 00, 00);
   serialState = WAITING;
 }
+
+
+
+
+
+
+
+
+
 
 
 

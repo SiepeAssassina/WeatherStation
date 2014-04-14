@@ -69,15 +69,12 @@ namespace SerialConsole
             com.Write("A");
             com.Write("A");
             com.Write("P");
-            while (true)
+            byte c = (byte)com.ReadByte();
+            for (byte i = 0; i < c; i++)
             {
-                byte c = (byte)com.ReadByte();
-                for (byte i = 0; i < c; i++)
-                {
-                    Console.Write((byte)com.ReadByte() + ": ");
-                    Console.WriteLine(((com.ReadByte() & 0x3) << 8) + com.ReadByte());
-                }
+                Console.Write((byte)com.ReadByte() + ": ");
+                Console.WriteLine(((com.ReadByte() & 0x3) << 8) + com.ReadByte());
             }
-        }
+        }      
     }
 }
