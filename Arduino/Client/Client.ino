@@ -1,10 +1,14 @@
 //Client
 #define SENSORS 4
+#define WAITING 0
+#define LISTENING 1
+#define DATA_TX 3  //Client -> Server
 struct sensorData
 {
   char adress;    //0-5 1byte
   unsigned short value; //0-1023 2byte  
 };
+
 sensorData data[4] = {
   {
     0, 1023              }
@@ -28,34 +32,33 @@ void loop()
   waitForPreamble();    
 }
 
-void waitForACK()
+bool waitForSerial(int time)
 {
-  while(Serial.read() != 'K');
+  if(time > 0)
+  {
+    for(int i = 0; i < time; i++)
+    {
+      delay(1);
+      if(Serial.available()) return true;
+    }
+    serialState = WAITING;
+    return false;
+  }
+  else while(!Serial.available());
+  return true;  
 }
 
 void waitForPreamble()
 {
-  if(Serial.available() == 3)
+  if(Serial.read() == 0xAA)
   {
-    if(Serial.read() == 'A' && Serial.read() == 'A' && Serial.read() == 'S')
-    {
-      digitalWrite(13, 1);
-      sendSensorData();      
-      digitalWrite(13, 0);
-    }    
-    else
-    {
-      while(Serial.available())
-      {
-        Serial.read();
-      }
-    } 
+    serialState = LISTENING;        
   }
 }
 
 void sendSensorData()
 { 
-  Serial.write('
+
   for(int i = 0; i < SENSORS; i++)
   {      
     Serial.write(data[i].adress);
