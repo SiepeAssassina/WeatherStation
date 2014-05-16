@@ -19,7 +19,7 @@ sensordata;
 sensorData Data;
 char serialState = WAITING;
 bool ERRORLEVEL = SUCCESS;
-const short pooling = 20;
+const short pooling = 5;
 
 void setup()
 {
@@ -137,6 +137,7 @@ bool sendSensorData()
 {
   byte _crc = 0;
   byte _buffer;
+  
   for(byte i = 0; i < SENSORS; i++)
   { 
     _buffer = (Data.value[i] & 0x300) >> 8;
@@ -146,17 +147,22 @@ bool sendSensorData()
     _crc ^= _buffer;
     Serial.write(_buffer);
   }  
+  
   Serial.write(_crc);
+  
   if(!waitForSerial(TIMEOUT)) return ERROR;
   if(Serial.read() != 0x00) return ERROR;
+  
   _crc = 0;  
   _crc ^= Data.time[0];
   _crc ^= Data.time[1]; 
   Serial.write(Data.time[0]);
   Serial.write(Data.time[1]);
   Serial.write(_crc);
+  
   if(!waitForSerial(TIMEOUT)) return ERROR;
   if(Serial.read() != 0x00) return ERROR;
+  
   return SUCCESS;
 }
 
@@ -177,33 +183,3 @@ bool getSerialTime()
   setTime(hh, mm, ss, 00, 00, 00);
   return SUCCESS;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

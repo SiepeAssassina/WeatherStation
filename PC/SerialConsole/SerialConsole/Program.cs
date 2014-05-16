@@ -12,7 +12,7 @@ namespace SerialConsole
     {   
         struct sensorData
         {
-            public int[] time;
+            public uint[] time;
             public int[] value;
         };
         
@@ -60,17 +60,16 @@ namespace SerialConsole
             Console.WriteLine("Connecting...");
             sensorData Data;
             Data.value = new int[4];
-            Data.time = new int[2];
+            Data.time = new uint[2];
             byte[] _buffer = new byte[8];
 
             sendByte(PREAMBLE);
             sendByte(READ);
             waitForCom(READ);                        
             
-            for (byte i = 0; i < 4; i++)
+            for (byte i = 0; i < 8; i++)
             {
               _buffer[i] = (byte)com.ReadByte();
-              _buffer[i+1] = (byte)com.ReadByte();
             }
             
             if (com.ReadByte() != computeCRC(_buffer))
@@ -82,8 +81,9 @@ namespace SerialConsole
             
             for (int i = 0; i < 4; i++)
             {
-                Data.value[i] = _buffer[i] & 0x3 << 8;
-                Data.value[i] += _buffer[i + 1] & 0xFF;
+                Data.value[i] = _buffer[2 * i] & 0x3;
+                Data.value[i] <<= 8;
+                Data.value[i] += _buffer[(2 * i) + 1] & 0xFF;
                 Console.WriteLine(Data.value[i]);
             }
             
