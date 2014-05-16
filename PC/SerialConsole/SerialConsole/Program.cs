@@ -9,7 +9,13 @@ namespace SerialConsole
 {
     
     class Program
-    {
+    {   
+        struct sensorData
+        {
+            public int[] time;
+            public int[] value;
+        };
+        
         static public SerialPort com;
         public const byte TIME = 0x10;
         public const byte PREAMBLE = 0xAA;
@@ -26,8 +32,6 @@ namespace SerialConsole
             com.ReadTimeout = 10000;
             com.ReadBufferSize = 8;
             com.Open();
-            //sendByte(0xAA);
-           // Console.WriteLine(com.ReadByte());
             while (true)
             {
                 Console.Write("WAITING > ");
@@ -53,21 +57,57 @@ namespace SerialConsole
 
         static void getSensorData()
         {
-            sendByte(PREAMBLE);
             Console.WriteLine("Connecting...");
-            sendByte(READ);
-            waitForCom(READ);
-           
-            if (com.ReadByte() != 'D') return;
-            byte c = (byte)com.ReadByte();
-            for (byte i = 0; i < c; i++)
-            {
-                Console.Write((byte)com.ReadByte() + ": ");
-                Console.WriteLine(((com.ReadByte() & 0x3) << 8) + com.ReadByte());
-            }
+            sensorData Data;
+            Data.value = new int[4];
+            Data.time = new int[2];
+            byte[] _buffer = new byte[8];
 
+            sendByte(PREAMBLE);
+            sendByte(READ);
+            waitForCom(READ);                        
+            
+            for (byte i = 0; i < 4; i++)
+            {
+              _buffer[i] = (byte)com.ReadByte();
+              _buffer[i+1] = (byte)com.ReadByte();
+            }
+            
+            if (com.ReadByte() != computeCRC(_buffer))
+            {
+                sendByte(0xFF);
+                Console.WriteLine("CrcError");
+                return;
+            }
+            
+            for (int i = 0; i < 4; i++)
+            {
+                Data.value[i] = _buffer[i] & 0x3 << 8;
+                Data.value[i] += _buffer[i + 1] & 0xFF;
+                Console.WriteLine(Data.value[i]);
+            }
+            
+            sendByte(0x00);
+            
+            _buffer = new byte [2];
+            _buffer[0] = (byte)com.ReadByte();
+            _buffer[1] = (byte)com.ReadByte();
+            
+            if (computeCRC(_buffer) != com.ReadByte())
+            {
+                sendByte(0xFF);
+                Console.WriteLine("CrcError");
+                return;
+            }
+            
+            Data.time[0] = _buffer[0];
+            Data.time[1] = _buffer[1];
+            
+            Console.WriteLine(Data.time[0] + ":" + Data.time[1]);
+            
+            sendByte(0x00);
         }
-        
+
         static void sendTime()
         {
             sendByte((byte)PREAMBLE);
@@ -79,11 +119,8 @@ namespace SerialConsole
                 Console.WriteLine("Sending time " + string.Format("{0:HH:mm:ss tt}", DateTime.Now));
                 byte[] time = new byte[] { 0, 0, 0, 0 };
                 time[0] = (byte)DateTime.Now.Hour;
-                //System.Threading.Thread.Sleep(100);
                 time[1] = (byte)DateTime.Now.Minute;
-                //System.Threading.Thread.Sleep(100);
                 time[2] = (byte)DateTime.Now.Second;
-                //System.Threading.Thread.Sleep(100);            
                 time[3] = computeCRC(time);
                 sendByte(time);
             } while (com.ReadByte() != 0x0);
@@ -98,7 +135,7 @@ namespace SerialConsole
         static byte computeCRC(byte[] b)
         {
             byte _crc = 0;
-            for (int i = 0; i < b.Length - 1; i++) _crc ^= b[i];
+            for (int i = 0; i < b.Length; i++) _crc ^= b[i];
             return _crc;   
         }
 

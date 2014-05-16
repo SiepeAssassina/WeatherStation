@@ -2,7 +2,6 @@
 #include <Time.h>
 #define WAITING 0
 #define LISTENING 1
-#define DATA_RX 2  //Client -> Server 
 #define DATA_TX 3  //Server -> PC
 #define TIME_SET 4
 #define SENSORS 4
@@ -51,16 +50,7 @@ void loop()
       getOperatingMode();
       digitalWrite(13, 0);
       break;
-    }
-  case DATA_RX:
-    {
-      digitalWrite(13,1);      
-      ERRORLEVEL = receiveSensorData(); 
-      Serial.write(ERRORLEVEL);     
-      if(ERRORLEVEL == SUCCESS) serialState = WAITING;
-      digitalWrite(13,0);
-      break;
-    }
+    }  
   case DATA_TX:      
     {
       digitalWrite(13, 1);     
@@ -143,48 +133,30 @@ bool getOperatingMode()
   }
 }
 
-bool receiveSensorData()
-{
-  Serial.write(0xAA);  
-  if(!waitForSerial(10)) return ERROR;   
-  if(Serial.read() != 0xAA) return ERROR;
-
-  unsigned short _buffer;
-  byte _data[2 * SENSORS];
-  byte _crc; 
-
-  for(int i = 0; i < 2 * SENSORS; i++)
-  {  
-    if(!waitForSerial(TIMEOUT)) return ERROR;   
-    _data[i] = Serial.read();  
-  }
-
-  for(int i = 0; i < 2* SENSORS; i++) _crc ^= _data[i];  
-
-  if(!waitForSerial(TIMEOUT)) return ERROR;   
-
-  if(_crc != Serial.read()) return ERROR;
-  for(int i = 0; i < SENSORS; i++)
-  {
-    Data.value[i] = _data[i] & 0x3 << 8;    
-    Data.value[i] += _data[i+1] & 0xFF;  
-  }
-  return SUCCESS;
-}
-
 bool sendSensorData()
 {
-  Serial.write(SENSORS);
-  delay(10);
-  for(int i = 0; i < SENSORS; i++)
-  {   
-    Serial.write(i);
-    delay(100);
-    Serial.write((Data.value[i] & 0x300) >> 8);
-    delay(100);
-    Serial.write(Data.value[i] & 0xFF);
-    delay(100);
+  byte _crc = 0;
+  byte _buffer;
+  for(byte i = 0; i < SENSORS; i++)
+  { 
+    _buffer = (Data.value[i] & 0x300) >> 8;
+    _crc ^= _buffer;
+    Serial.write(_buffer);
+    _buffer = Data.value[i] & 0xFF;
+    _crc ^= _buffer;
+    Serial.write(_buffer);
   }  
+  Serial.write(_crc);
+  if(!waitForSerial(TIMEOUT)) return ERROR;
+  if(Serial.read() != 0x00) return ERROR;
+  _crc = 0;  
+  _crc ^= Data.time[0];
+  _crc ^= Data.time[1]; 
+  Serial.write(Data.time[0]);
+  Serial.write(Data.time[1]);
+  Serial.write(_crc);
+  if(!waitForSerial(TIMEOUT)) return ERROR;
+  if(Serial.read() != 0x00) return ERROR;
   return SUCCESS;
 }
 
@@ -205,6 +177,7 @@ bool getSerialTime()
   setTime(hh, mm, ss, 00, 00, 00);
   return SUCCESS;
 }
+
 
 
 
