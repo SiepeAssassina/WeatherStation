@@ -1,5 +1,8 @@
 //Server
 #include <Time.h>
+#include <avr/interrupt.h>
+#include <avr/eeprom.h>
+
 #define WAITING 0
 #define LISTENING 1
 #define DATA_TX 3  //Server -> PC
@@ -13,13 +16,12 @@ struct sensorData
 {
   byte time[2];  
   unsigned short value[4]; //0-1023 2 byte  
-}
-sensordata;
+};
 
-sensorData Data;
-char serialState = WAITING;
+byte serialState = WAITING;
+byte INDEX = 0;
 bool ERRORLEVEL = SUCCESS;
-const short pooling = 5;
+const short pooling = 1000;
 
 void setup()
 {
@@ -32,9 +34,9 @@ void setup()
 
 void loop()
 {   
-  if(second() % pooling == 0 && serialState == WAITING)
+  if(millis() % pooling == 0 && serialState == WAITING)
   {
-    update();
+    update();    
   }
   switch(serialState)
   {
@@ -74,13 +76,22 @@ void loop()
 
 void update()
 {
-  digitalWrite(13, 1);
+  digitalWrite(13, 1);  
+  if(INDEX > 102) INDEX = 0;  
+  sensorData Data;
   for(int i = 0; i < SENSORS; i++)
   {
     Data.value[i] = analogRead(i);    
   }
   Data.time[0] = hour();
   Data.time[1] = minute();
+  while(!eeprom_is_ready()); 
+  cli();
+  //eeprom_write_block((void*)&yolo, (void*)0, sizeof(yolo));
+  eeprom_write_block((void*)&Data, (void*)(sizeof(sensorData)*INDEX), sizeof(sensorData));    
+  sei();
+  INDEX++; 
+  while(!eeprom_is_ready());
   digitalWrite(13, 0);
 }
 
@@ -136,33 +147,45 @@ bool getOperatingMode()
 bool sendSensorData()
 {
   byte _crc = 0;
-  byte _buffer;
-  
-  for(byte i = 0; i < SENSORS; i++)
-  { 
-    _buffer = (Data.value[i] & 0x300) >> 8;
-    _crc ^= _buffer;
-    Serial.write(_buffer);
-    _buffer = Data.value[i] & 0xFF;
-    _crc ^= _buffer;
-    Serial.write(_buffer);
-  }  
-  
-  Serial.write(_crc);
-  
-  if(!waitForSerial(TIMEOUT)) return ERROR;
-  if(Serial.read() != 0x00) return ERROR;
-  
-  _crc = 0;  
-  _crc ^= Data.time[0];
-  _crc ^= Data.time[1]; 
-  Serial.write(Data.time[0]);
-  Serial.write(Data.time[1]);
-  Serial.write(_crc);
-  
-  if(!waitForSerial(TIMEOUT)) return ERROR;
-  if(Serial.read() != 0x00) return ERROR;
-  
+  byte _buffer = 0;
+  byte yolo;
+  sensorData Data;  
+  Serial.write(INDEX);
+  for(byte _index = 0; _index < INDEX; _index++)
+  {
+    while(!eeprom_is_ready());
+    cli();
+    //eeprom_read_block((void*)&yolo, (void*)0, sizeof(yolo));
+    eeprom_read_block((void*)&Data, (void*)(sizeof(sensorData)*1), sizeof(sensorData));    
+    sei();
+    while(!eeprom_is_ready());
+    _crc = 0;
+    for(byte i = 0; i < SENSORS; i++)
+    { 
+      _buffer = (Data.value[i] & 0x300) >> 8;
+      _crc ^= _buffer;
+      Serial.write(_buffer);
+      _buffer = Data.value[i] & 0xFF;
+      _crc ^= _buffer;
+      Serial.write(_buffer);
+    }  
+
+    Serial.write(_crc);
+
+    if(!waitForSerial(TIMEOUT)) return ERROR;
+    if(Serial.read() != 0x00) return ERROR;
+
+    _crc = 0;  
+    _crc ^= Data.time[0];
+    _crc ^= Data.time[1]; 
+    Serial.write(Data.time[0]);
+    Serial.write(Data.time[1]);
+    Serial.write(_crc);
+
+    if(!waitForSerial(TIMEOUT)) return ERROR;
+    if(Serial.read() != 0x00) return ERROR;    
+  }
+  INDEX = 0; 
   return SUCCESS;
 }
 
@@ -183,3 +206,5 @@ bool getSerialTime()
   setTime(hh, mm, ss, 00, 00, 00);
   return SUCCESS;
 }
+
+

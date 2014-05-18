@@ -34,7 +34,7 @@ namespace SerialConsole
             com.Open();
             while (true)
             {
-                Console.Write("WAITING > ");
+                Console.Write("WAITING> ");
                 switch (Console.ReadLine())
                 {
                     case "T":
@@ -59,53 +59,58 @@ namespace SerialConsole
         {
             Console.WriteLine("Connecting...");
             sensorData Data;
-            Data.value = new int[4];
-            Data.time = new uint[2];
-            byte[] _buffer = new byte[8];
+            byte[] _buffer;
 
             sendByte(PREAMBLE);
             sendByte(READ);
-            waitForCom(READ);                        
-            
-            for (byte i = 0; i < 8; i++)
+            waitForCom(READ);
+            int _index = com.ReadByte();
+            Console.WriteLine(_index);
+            for (int j = 0; j < _index; j++)
             {
-              _buffer[i] = (byte)com.ReadByte();
-            }
-            
-            if (com.ReadByte() != computeCRC(_buffer))
-            {
-                sendByte(0xFF);
-                Console.WriteLine("CrcError");
-                return;
-            }
-            
-            for (int i = 0; i < 4; i++)
-            {
-                Data.value[i] = _buffer[2 * i] & 0x3;
-                Data.value[i] <<= 8;
-                Data.value[i] += _buffer[(2 * i) + 1] & 0xFF;
-                Console.WriteLine(Data.value[i]);
-            }
-            
-            sendByte(0x00);
-            
-            _buffer = new byte [2];
-            _buffer[0] = (byte)com.ReadByte();
-            _buffer[1] = (byte)com.ReadByte();
-            
-            if (computeCRC(_buffer) != com.ReadByte())
-            {
-                sendByte(0xFF);
-                Console.WriteLine("CrcError");
-                return;
-            }
-            
-            Data.time[0] = _buffer[0];
-            Data.time[1] = _buffer[1];
-            
-            Console.WriteLine(Data.time[0] + ":" + Data.time[1]);
-            
-            sendByte(0x00);
+                _buffer = new byte[8];
+                Data.value = new int[4];
+                Data.time = new uint[2];
+                for (byte i = 0; i < 8; i++)
+                {
+                    //Console.WriteLine(com.ReadByte());
+                    _buffer[i] = (byte)com.ReadByte();
+                }
+
+                if (com.ReadByte() != computeCRC(_buffer))
+                {
+                    sendByte(0xFF);
+                    Console.WriteLine("CrcError");
+                   // return;
+                }
+
+                for (int i = 0; i < 4; i++)
+                {
+                    Data.value[i] = _buffer[2 * i] & 0x3;
+                    Data.value[i] <<= 8;
+                    Data.value[i] += _buffer[(2 * i) + 1] & 0xFF;
+                    Console.WriteLine(Data.value[i]);
+                }
+
+                sendByte(0x00);
+
+                _buffer = new byte[2];
+                _buffer[0] = (byte)com.ReadByte();
+                _buffer[1] = (byte)com.ReadByte();
+
+                if (computeCRC(_buffer) != com.ReadByte())
+                {
+                    sendByte(0xFF);
+                    Console.WriteLine("CrcError");
+                    //return;
+                }
+
+                Data.time[0] = _buffer[0];
+                Data.time[1] = _buffer[1];
+
+                Console.WriteLine(Data.time[0] + ":" + Data.time[1]);
+                sendByte(0x00);
+            }            
         }
 
         static void sendTime()
