@@ -1,4 +1,3 @@
-//Server
 #include <Time.h>
 #include <avr/interrupt.h>
 #include <avr/eeprom.h>
@@ -113,7 +112,7 @@ void update()
 
 void stream()
 {
-  if(!waitForSerial(1000)) 
+  if(!waitForSerial(10000)) 
   {
     serialState = WAITING;
     return;  
@@ -129,11 +128,13 @@ void stream()
     {
       Serial.write(0x32);
       update();
-      sendLiveData();
+      while(sendLiveData() != SUCCESS);
       break;
     }
   case 0x33:
     {
+      Serial.write(0x33);
+      serialState = WAITING;
       break;
     }
   default:
@@ -205,12 +206,11 @@ bool sendEEData()
   byte _buffer = 0;
   sensorData _data;  
   Serial.write(INDEX);
-  
+
   for(byte _index = 0; _index < INDEX; _index++)
   {
     while(!eeprom_is_ready());
-    cli();
-    //eeprom_read_block((void*)&yolo, (void*)0, sizeof(yolo));
+    cli();   
     eeprom_read_block((void*)&_data, (void*)(sizeof(sensorData)*1), sizeof(sensorData));    
     sei();
     while(!eeprom_is_ready());
@@ -248,8 +248,6 @@ bool sendLiveData()
 {
   byte _crc = 0;
   byte _buffer = 0; 
-  
-  _crc = 0;
   for(byte i = 0; i < SENSORS; i++)
   { 
     _buffer = (data.value[i] & 0x300) >> 8;
@@ -274,8 +272,6 @@ bool sendLiveData()
 
   if(!waitForSerial(TIMEOUT)) return ERROR;
   if(Serial.read() != 0x00) return ERROR;    
-
-  INDEX = 0; 
   return SUCCESS;
 }
 
@@ -296,3 +292,24 @@ bool getSerialTime()
   setTime(hh, mm, ss, 00, 00, 00);
   return SUCCESS;
 }
+
+byte CRC8(const byte *data, byte len) 
+{
+  byte _crc = 0x00;
+  while (len--) 
+  {
+    byte extract = *data++;
+    for (byte i = 8; i; i--) 
+    {
+      byte sum = (_crc ^ extract) & 0x01;
+      _crc >>= 1;
+      if (sum)
+      {
+        _crc ^= 0x8C;
+      }
+      extract >>= 1;
+    }
+  }
+  return _crc;
+}
+

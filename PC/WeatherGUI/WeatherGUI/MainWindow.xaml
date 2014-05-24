@@ -1,0 +1,28 @@
+﻿<Window x:Class="WeatherGUI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="MainWindow" Height="480" Width="800" Loaded="Window_Loaded" ResizeMode="CanResizeWithGrip" WindowStyle="ToolWindow">
+    <Grid>
+        <TabControl Height="333" HorizontalAlignment="Left" Margin="5,2,0,0" Name="tabControl1" VerticalAlignment="Top" Width="770">
+            <TabItem Header="tabItem1" Name="tabItem1">
+                <Grid></Grid>
+            </TabItem>
+            <TabItem Header="tabItem1" Name="tabItem2">
+                <Grid>
+                    <Button Content="Connect" Height="37" HorizontalAlignment="Left" Margin="667,257,0,0" Name="button1" VerticalAlignment="Top" Width="87" Click="connectClick" />
+                    <GroupBox Header="Progress" Height="60" HorizontalAlignment="Left" Margin="0,240,0,0" Name="groupBox1" VerticalAlignment="Top" Width="660">
+                        <Grid>
+                            <ProgressBar Height="27" HorizontalAlignment="Left" Margin="6,6,0,0" Name="downloadBar" VerticalAlignment="Top" Width="635" />
+                        </Grid>
+                    </GroupBox>
+                    <ComboBox Height="23" HorizontalAlignment="Left" Margin="667,228,0,0" Name="comSelectionBox" VerticalAlignment="Top" Width="85" />
+                </Grid>
+            </TabItem>            
+        </TabControl>
+        <GroupBox Header="Debug" Height="90" HorizontalAlignment="Left" Margin="4,344,0,0" Name="dbgBox" VerticalAlignment="Top" Width="770">
+            <Grid>
+                <ListBox Height="54" HorizontalAlignment="Left" Name="debugBox" VerticalAlignment="Top" Width="746" Margin="6,7,0,0" />
+            </Grid>
+        </GroupBox>
+    </Grid>
+</Window>

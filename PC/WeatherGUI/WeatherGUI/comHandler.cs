@@ -1,110 +1,107 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using System.Windows;
 using System.IO.Ports;
 using System.Threading;
+using System.Windows.Threading;
 
-
-namespace SerialConsole
+namespace WeatherGUI
 {
-    
-    class Program
-    {   
+    class comHandler
+    {
         struct sensorData
         {
             public uint[] time;
             public int[] value;
         };
-        
-        static public SerialPort com;
-        public const byte TIME = 0x10;
-        public const byte PREAMBLE = 0xAA;
-        public const byte READ = 0x20;
+        private SerialPort com;
+        private IMainWindow mWindow;
+        private const byte TIME = 0x10;
+        private const byte PREAMBLE = 0xAA;
+        private const byte READ = 0x20;
+        private Thread thread = null;
 
-        static void Main(string[] args)
+        public comHandler(string COM, int baud, IMainWindow mWindow)
         {
-            char[] buffer = new char[1];
-            com = new SerialPort("COM3");
-            com.BaudRate = 600;
+            this.mWindow = mWindow;
+            com = new SerialPort(COM);
+            com.BaudRate = baud;
             com.Parity = Parity.None;
             com.StopBits = StopBits.One;
             com.Handshake = Handshake.None;
             com.ReadTimeout = 100;
             com.ReadBufferSize = 8;
-            com.Open();
-            while (true)
+            try
             {
-                Console.Write("WAITING> ");
-                switch (Console.ReadLine())
-                {
-                    case "T":
-                        {
-                            sendTime();
-                            break;
-                        }
-                    case "D":
-                        {
-                            getSensorData();
-                            break;
-                        }
-                    case "S":
-                        {
-                            stream();
-                            break;
-                        }
-                    default:
-                        {
-                            break;
-                        }
-                }
+                com.Open();
+                mWindow.appendDebug("Opened " + COM + " @ " + baud + " baud");
             }
+            catch (Exception e)
+            {
+                MessageBox.Show(e.ToString());
+            }                      
         }
 
-        static void stream()
+        public void connect()
         {
-            Console.WriteLine("Connecting...");
+            thread = new Thread(() =>
+            {
+                while(!sendTime());
+                sendByte(PREAMBLE);
+                sendByte(0x30);
+                if (safeRead() != 0x30) thread.Abort();
+                while(!stream());
+            });  
+            thread.Start(); 
+        }
+
+        public void disconnect()
+        {
+            if (thread != null) thread.Abort();
+
+            mWindow.appendDebug("Task killed");
+        }
+       
+        public bool stream()
+        {
             sensorData Data;
             byte[] _buffer;
-            sendByte(PREAMBLE);
-            sendByte(0x30);
-            if(safeRead() != 0x30) return;
-            Console.Clear();
+           
             while (true)
             {
                 for (int i = 0; i < 10; i++)
                 {
                     sendByte(0x31);
-                    if(safeRead() != 0x31) return;
+                    if (safeRead() != 0x31) return false;
                     Thread.Sleep(90);
                 }
+
                 sendByte(0x31);
-                if(safeRead() != 0x31) return;
+                if (safeRead() != 0x31) return false;
                 sendByte(0x32);
-                if(safeRead() != 0x32) return;
+                if (safeRead() != 0x32) return false;
                 _buffer = new byte[8];
                 Data.value = new int[4];
                 Data.time = new uint[2];
+
                 for (byte i = 0; i < 8; i++)
                 {
-                    //Console.WriteLine(com.ReadByte());
-                    _buffer[i] = (byte)com.ReadByte();
+                    _buffer[i] = (byte)safeRead();
                 }
 
                 if (safeRead() != computeCRC(_buffer))
                 {
                     sendByte(0xFF);
-                    Console.WriteLine("CrcError");
-                    return;
+                    mWindow.appendDebug("CrcError");
+                    return false;
                 }
-                Console.Clear();
+                
                 for (int i = 0; i < 4; i++)
                 {
                     Data.value[i] = _buffer[2 * i] & 0x3;
                     Data.value[i] <<= 8;
                     Data.value[i] += _buffer[(2 * i) + 1] & 0xFF;
-                    
-                    Console.WriteLine(Data.value[i]);
+
+                    mWindow.appendDebug(Data.value[i].ToString());
                 }
 
                 sendByte(0x00);
@@ -116,30 +113,30 @@ namespace SerialConsole
                 if (computeCRC(_buffer) != com.ReadByte())
                 {
                     sendByte(0xFF);
-                    Console.WriteLine("CrcError");
-                    return;
+                    mWindow.appendDebug("CrcError");
+                    return false;
                 }
 
                 Data.time[0] = _buffer[0];
                 Data.time[1] = _buffer[1];
-                
+
                 sendByte(0x00);
-                Console.WriteLine(Data.time[0] + ":" + Data.time[1]);
-               
+                mWindow.appendDebug(Data.time[0] + ":" + Data.time[1]);
+                return true;
             }
         }
 
-        static void getSensorData()
+        public void getSensorData()
         {
-            Console.WriteLine("Connecting...");
+            mWindow.appendDebug("Connecting...");
             sensorData Data;
             byte[] _buffer;
 
             sendByte(PREAMBLE);
             sendByte(READ);
-            if(safeRead() != READ) return;
+            if (safeRead() != READ) return;
             int _index = com.ReadByte();
-            Console.WriteLine(_index);
+            mWindow.appendDebug("Items:" + _index);
             for (int j = 0; j < _index; j++)
             {
                 _buffer = new byte[8];
@@ -147,15 +144,14 @@ namespace SerialConsole
                 Data.time = new uint[2];
                 for (byte i = 0; i < 8; i++)
                 {
-                    //Console.WriteLine(com.ReadByte());
                     _buffer[i] = (byte)com.ReadByte();
                 }
 
                 if (safeRead() != computeCRC(_buffer))
                 {
                     sendByte(0xFF);
-                    Console.WriteLine("CrcError");
-                   // return;
+                    mWindow.appendDebug("CrcError");
+                    return;
                 }
 
                 for (int i = 0; i < 4; i++)
@@ -175,27 +171,27 @@ namespace SerialConsole
                 if (computeCRC(_buffer) != com.ReadByte())
                 {
                     sendByte(0xFF);
-                    Console.WriteLine("CrcError");
-                    //return;
+                    mWindow.appendDebug("CrcError");
+                    return;
                 }
 
                 Data.time[0] = _buffer[0];
                 Data.time[1] = _buffer[1];
 
-                Console.WriteLine(Data.time[0] + ":" + Data.time[1]);
+                mWindow.appendDebug(Data.time[0] + ":" + Data.time[1]);
                 sendByte(0x00);
-            }            
+            }
         }
 
-        static void sendTime()
+        public bool sendTime()
         {
             sendByte((byte)PREAMBLE);
-            Console.WriteLine("Connecting...");
+            mWindow.appendDebug("Connecting...");
             sendByte((byte)TIME);
-            if (safeRead() != TIME) return;
+            if (safeRead() != TIME) return false;
             do
             {
-                Console.WriteLine("Sending time " + string.Format("{0:HH:mm:ss tt}", DateTime.Now));
+                mWindow.appendDebug("Sending time " + string.Format("{0:HH:mm:ss tt}", DateTime.Now));
                 byte[] time = new byte[] { 0, 0, 0, 0 };
                 time[0] = (byte)DateTime.Now.Hour;
                 time[1] = (byte)DateTime.Now.Minute;
@@ -203,32 +199,38 @@ namespace SerialConsole
                 time[3] = computeCRC(time);
                 sendByte(time);
             } while (safeRead() != 0x0);
-            Console.WriteLine("Success");
+            mWindow.appendDebug("Success");
+            return true;
         }
 
-        static void sendByte(params byte[] b)
+        private void sendByte(params byte[] b)
         {
             com.Write(b, 0, b.Length);
         }
 
-        static byte computeCRC(byte[] b)
+        private byte computeCRC(byte[] b)
         {
             byte _crc = 0;
             for (int i = 0; i < b.Length; i++) _crc ^= b[i];
-            return _crc;   
+            return _crc;
         }
 
-        static int safeRead()
+        private int safeRead()
         {
             try
             {
-               return com.ReadByte();
+                return com.ReadByte();
             }
-            catch (TimeoutException)            
+            catch (TimeoutException)
             {
-                Console.WriteLine("Time too big");
+                mWindow.appendDebug("Time too big");
             }
             return -1;
-        }        
+        }
+
+        public void Close()
+        {
+            com.Close();
+        }
     }
 }

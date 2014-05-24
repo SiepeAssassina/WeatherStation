@@ -216,3 +216,10 @@ pip-log.txt
 *.csproj
 PC/SerialConsole/SerialConsole/Properties/AssemblyInfo.cs
 *.sln
+*.resx
+PC/WeatherGUI/WeatherGUI/App.xaml
+PC/WeatherGUI/WeatherGUI/App.xaml.cs
+PC/WeatherGUI/WeatherGUI/Properties/AssemblyInfo.cs
+PC/WeatherGUI/WeatherGUI/Properties/Resources.Designer.cs
+PC/WeatherGUI/WeatherGUI/Properties/Settings.Designer.cs
+PC/WeatherGUI/WeatherGUI/Properties/Settings.settings
