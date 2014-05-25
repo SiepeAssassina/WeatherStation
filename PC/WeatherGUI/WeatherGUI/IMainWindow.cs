@@ -8,5 +8,6 @@ namespace WeatherGUI
     interface IMainWindow 
     {
         void appendDebug(string s);
+        void updateState(bool b);
     }
 }

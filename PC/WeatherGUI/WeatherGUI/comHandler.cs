@@ -43,87 +43,90 @@ namespace WeatherGUI
 
         public void connect()
         {
-            thread = new Thread(() =>
+            if (!com.IsOpen)
             {
-                while(!sendTime());
-                sendByte(PREAMBLE);
-                sendByte(0x30);
-                if (safeRead() != 0x30) thread.Abort();
-                while(!stream());
+                return;               
+            }
+            thread = new Thread(() =>
+            {           
+                for (int i = 0; i < 10; i++)
+                {
+                    while (sendTime() && stream()) i = 0;
+                    mWindow.appendDebug("Stream error, retry [" + i.ToString() + "/10]");
+                    Thread.Sleep(1000);
+                }
+                mWindow.appendDebug("Too many fails! Aborting");
+                mWindow.updateState(false);
+                disconnect();
             });  
-            thread.Start(); 
+            thread.Start();
+            if (thread.IsAlive) mWindow.updateState(true);
         }
 
         public void disconnect()
         {
+            if (!com.IsOpen) return;
             if (thread != null) thread.Abort();
-
-            mWindow.appendDebug("Task killed");
+            sendByte(0x33);
+            for (int i = 0; i < 10 && safeRead() != 0x33; i++) sendByte(0x33);
+            mWindow.updateState(false);
         }
        
         public bool stream()
         {
+            sendByte(PREAMBLE);
+            mWindow.appendDebug("Initializing stream"); 
+            sendByte(0x30);
+            if (safeRead() != 0x30) thread.Abort();
+            mWindow.appendDebug("Stream ready");
             sensorData Data;
             byte[] _buffer;
-           
-            while (true)
+            for (int i = 0; i < 10; i++)
             {
-                for (int i = 0; i < 10; i++)
-                {
-                    sendByte(0x31);
-                    if (safeRead() != 0x31) return false;
-                    Thread.Sleep(90);
-                }
-
+                mWindow.appendDebug("Sending keep alive...");
                 sendByte(0x31);
                 if (safeRead() != 0x31) return false;
-                sendByte(0x32);
-                if (safeRead() != 0x32) return false;
-                _buffer = new byte[8];
-                Data.value = new int[4];
-                Data.time = new uint[2];
-
-                for (byte i = 0; i < 8; i++)
-                {
-                    _buffer[i] = (byte)safeRead();
-                }
-
-                if (safeRead() != computeCRC(_buffer))
-                {
-                    sendByte(0xFF);
-                    mWindow.appendDebug("CrcError");
-                    return false;
-                }
-                
-                for (int i = 0; i < 4; i++)
-                {
-                    Data.value[i] = _buffer[2 * i] & 0x3;
-                    Data.value[i] <<= 8;
-                    Data.value[i] += _buffer[(2 * i) + 1] & 0xFF;
-
-                    mWindow.appendDebug(Data.value[i].ToString());
-                }
-
-                sendByte(0x00);
-
-                _buffer = new byte[2];
-                _buffer[0] = (byte)com.ReadByte();
-                _buffer[1] = (byte)com.ReadByte();
-
-                if (computeCRC(_buffer) != com.ReadByte())
-                {
-                    sendByte(0xFF);
-                    mWindow.appendDebug("CrcError");
-                    return false;
-                }
-
-                Data.time[0] = _buffer[0];
-                Data.time[1] = _buffer[1];
-
-                sendByte(0x00);
-                mWindow.appendDebug(Data.time[0] + ":" + Data.time[1]);
-                return true;
+                mWindow.appendDebug("Got keep alive");
+                Thread.Sleep(10000);
             }
+            sendByte(0x32);
+            if (safeRead() != 0x32) return false;
+            _buffer = new byte[8];
+            Data.value = new int[4];
+            Data.time = new uint[2];
+            for (byte i = 0; i < 8; i++)
+            {
+                _buffer[i] = (byte)safeRead();
+            }
+            if (safeRead() != computeCRC(_buffer))
+            {
+                sendByte(0xFF);
+                mWindow.appendDebug("CrcError");
+                return false;
+            }
+            for (int i = 0; i < 4; i++)
+            {
+                Data.value[i] = _buffer[2 * i] & 0x3;
+                Data.value[i] <<= 8;
+                Data.value[i] += _buffer[(2 * i) + 1] & 0xFF;
+                mWindow.appendDebug(Data.value[i].ToString());
+            }
+            sendByte(0x00);
+            _buffer = new byte[2];
+            _buffer[0] = (byte)com.ReadByte();
+            _buffer[1] = (byte)com.ReadByte();
+          
+            if (computeCRC(_buffer) != com.ReadByte())
+            {
+                sendByte(0xFF);
+                mWindow.appendDebug("CrcError");
+                return false;
+            }
+            Data.time[0] = _buffer[0];
+            Data.time[1] = _buffer[1];
+            sendByte(0x00);
+            mWindow.appendDebug(Data.time[0] + ":" + Data.time[1]);
+            return true;
         }
 
         public void getSensorData()
@@ -205,7 +208,14 @@ namespace WeatherGUI
 
         private void sendByte(params byte[] b)
         {
-            com.Write(b, 0, b.Length);
+            try
+            {
+                com.Write(b, 0, b.Length);
+            }
+            catch (Exception e)
+            {
+                MessageBox.Show(e.ToString());
+            }
         }
 
         private byte computeCRC(byte[] b)
@@ -223,14 +233,19 @@ namespace WeatherGUI
             }
             catch (TimeoutException)
             {
-                mWindow.appendDebug("Time too big");
+                mWindow.appendDebug("Byte lost!");
+            }
+            catch (Exception e)
+            {
+                MessageBox.Show(e.ToString());
             }
             return -1;
         }
 
         public void Close()
         {
-            com.Close();
+            disconnect(); 
+            if(com.IsOpen) com.Close();
         }
     }
 }

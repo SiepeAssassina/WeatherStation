@@ -1,12 +1,16 @@
 #include <Time.h>
 #include <avr/interrupt.h>
 #include <avr/eeprom.h>
+#include <avr/io.h>
+#include <avr/wdt.h>
 
-#define WAITING 0
-#define LISTENING 1
-#define STREAM 2
-#define DATA_TX 3  //Server -> PC
-#define TIME_SET 4
+#define Reset_AVR() wdt_enable(WDTO_30MS); while(1) {} 
+#define WAITING 0x0
+#define LISTENING 0x10
+#define DATA_TX 0x20  
+#define STREAM 0x30
+#define TIME_SET 0x40
+#define RESET 0x50
 #define SENSORS 4
 #define POOLING 3600000
 #define TIMEOUT 1000
@@ -110,41 +114,6 @@ void update()
   digitalWrite(13, 0);
 }
 
-void stream()
-{
-  if(!waitForSerial(10000)) 
-  {
-    serialState = WAITING;
-    return;  
-  }
-  switch(Serial.read())
-  {
-  case 0x31:
-    {
-      Serial.write(0x31);
-      break;
-    }
-  case 0x32:
-    {
-      Serial.write(0x32);
-      update();
-      while(sendLiveData() != SUCCESS);
-      break;
-    }
-  case 0x33:
-    {
-      Serial.write(0x33);
-      serialState = WAITING;
-      break;
-    }
-  default:
-    {
-      serialState = WAITING;
-      break;
-    }
-  }
-}
-
 bool waitForSerial(int time)
 {
   if(time > 0)
@@ -174,6 +143,12 @@ bool getOperatingMode()
   if(!waitForSerial(TIMEOUT)) return ERROR;
   switch(Serial.read())
   {
+  case 0x40:
+    {
+      Serial.write(0x40);
+      if(!waitforSerial(100)) break;
+      Reset_AVR();      
+    }
   case 0x30:
     {
       serialState = STREAM;
@@ -195,6 +170,41 @@ bool getOperatingMode()
   default:
     {
       return ERROR;
+      break;
+    }
+  }
+}
+
+void stream()
+{
+  if(!waitForSerial(11000)) 
+  {
+    serialState = WAITING;
+    return;  
+  }
+  switch(Serial.read())
+  {
+  case 0x31:
+    {
+      Serial.write(0x31);
+      break;
+    }
+  case 0x32:
+    {
+      Serial.write(0x32);
+      update();
+      while(sendLiveData() != SUCCESS);
+      break;
+    }
+  case 0x33:
+    {
+      Serial.write(0x33);
+      serialState = WAITING;
+      break;
+    }
+  default:
+    {
+      serialState = WAITING;
       break;
     }
   }
@@ -312,4 +322,5 @@ byte CRC8(const byte *data, byte len)
   }
   return _crc;
 }
+
 
