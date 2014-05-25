@@ -37,7 +37,7 @@ namespace WeatherGUI
             }
             catch (Exception e)
             {
-                MessageBox.Show(e.ToString());
+                MessageBox.Show(e.ToString());                
             }                      
         }
 
@@ -51,7 +51,9 @@ namespace WeatherGUI
             {           
                 for (int i = 0; i < 10; i++)
                 {
-                    while (sendTime() && stream()) i = 0;
+                    if(!sendTime()) continue;
+                    i = 0;
+                    stream();
                     mWindow.appendDebug("Stream error, retry [" + i.ToString() + "/10]");
                     Thread.Sleep(1000);
                 }
@@ -72,7 +74,7 @@ namespace WeatherGUI
             mWindow.updateState(false);
         }
        
-        public bool stream()
+        public void stream()
         {
             sendByte(PREAMBLE);
             mWindow.appendDebug("Initializing stream"); 
@@ -81,52 +83,56 @@ namespace WeatherGUI
             mWindow.appendDebug("Stream ready");
             sensorData Data;
             byte[] _buffer;
-            for (int i = 0; i < 10; i++)
+            while (true)
             {
-                mWindow.appendDebug("Sending keep alive...");
-                sendByte(0x31);
-                if (safeRead() != 0x31) return false;
-                mWindow.appendDebug("Got keep alive");
-                Thread.Sleep(10000);
+                for (int i = 0; i < 10; i++)
+                {
+                    mWindow.appendDebug("Sending keep alive...");
+                    sendByte(0x31);
+                    if (safeRead() != 0x31) return;
+                    mWindow.appendDebug("Got keep alive");
+                    Thread.Sleep(1000);
+                }
+                sendByte(0x32);
+                if (safeRead() != 0x32) return;
+                _buffer = new byte[8];
+                Data.value = new int[4];
+                Data.time = new uint[2];
+                for (byte i = 0; i < 8; i++)
+                {
+                    _buffer[i] = (byte)safeRead();
+                }
+                if (safeRead() != computeCRC(_buffer))
+                {
+                    MessageBox.Show("CRC mismatch");
+                    sendByte(0xFF);
+                    mWindow.appendDebug("CrcError");
+                    return;
+                }
+                for (int i = 0; i < 4; i++)
+                {
+                    Data.value[i] = _buffer[2 * i] & 0x3;
+                    Data.value[i] <<= 8;
+                    Data.value[i] += _buffer[(2 * i) + 1] & 0xFF;
+                    mWindow.appendDebug(Data.value[i].ToString());
+                }
+                sendByte(0x00);
+                _buffer = new byte[2];
+                _buffer[0] = (byte)com.ReadByte();
+                _buffer[1] = (byte)com.ReadByte();
+
+                if (computeCRC(_buffer) != com.ReadByte())
+                {
+                    MessageBox.Show("CRC mismatch");
+                    sendByte(0xFF);
+                    mWindow.appendDebug("CrcError");
+                    return;
+                }
+                Data.time[0] = _buffer[0];
+                Data.time[1] = _buffer[1];
+                sendByte(0x00);
+                mWindow.appendDebug(Data.time[0] + ":" + Data.time[1]);
             }
-            sendByte(0x32);
-            if (safeRead() != 0x32) return false;
-            _buffer = new byte[8];
-            Data.value = new int[4];
-            Data.time = new uint[2];
-            for (byte i = 0; i < 8; i++)
-            {
-                _buffer[i] = (byte)safeRead();
-            }
-            if (safeRead() != computeCRC(_buffer))
-            {
-                sendByte(0xFF);
-                mWindow.appendDebug("CrcError");
-                return false;
-            }
-            for (int i = 0; i < 4; i++)
-            {
-                Data.value[i] = _buffer[2 * i] & 0x3;
-                Data.value[i] <<= 8;
-                Data.value[i] += _buffer[(2 * i) + 1] & 0xFF;
-                mWindow.appendDebug(Data.value[i].ToString());
-            }
-            sendByte(0x00);
-            _buffer = new byte[2];
-            _buffer[0] = (byte)com.ReadByte();
-            _buffer[1] = (byte)com.ReadByte();
-          
-            if (computeCRC(_buffer) != com.ReadByte())
-            {
-                sendByte(0xFF);
-                mWindow.appendDebug("CrcError");
-                return false;
-            }
-            Data.time[0] = _buffer[0];
-            Data.time[1] = _buffer[1];
-            sendByte(0x00);
-            mWindow.appendDebug(Data.time[0] + ":" + Data.time[1]);
-            return true;
         }
 
         public void getSensorData()

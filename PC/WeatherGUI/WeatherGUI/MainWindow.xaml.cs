@@ -34,6 +34,8 @@ namespace WeatherGUI
             }
             else if (!isOnline)
             {
+                modem.Close();
+                modem = new comHandler(comSelectionBox.SelectedItem.ToString(), 600, (IMainWindow)this);
                 modem.connect();
             }
             else
