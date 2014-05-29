@@ -11,9 +11,12 @@
 #define STREAM 0x30
 #define TIME_SET 0x40
 #define RESET 0x50
+#define ECHO 0x60
+#define HEARTBEAT 0x70
 #define SENSORS 4
 #define POOLING 3600000
 #define TIMEOUT 1000
+#define PREAMBLE 0xAA
 #define SUCCESS 0x00
 #define ERROR 0xFF
 
@@ -24,13 +27,16 @@ struct sensorData
 }
 data;
 
+byte lastPacketLenght = 0;
+byte *lastPacketData = NULL;
 byte serialState = WAITING;
 byte INDEX = 0;
-bool ERRORLEVEL = SUCCESS;
+boolean isLinked = false;
+unsigned long int lastHeartbeat = 0;
 
 void setup()
 {
-  Serial.begin(600, SERIAL_8N1);
+  Serial.begin(1200, SERIAL_8N1);
   analogReference(EXTERNAL);
   pinMode(13, OUTPUT);
   digitalWrite(13, 0);
@@ -40,9 +46,11 @@ void setup()
 void loop()
 {   
   if(millis() % POOLING == 0 && serialState == WAITING)
-  {
-    update();    
+  {       
+    update();       
   }
+  
+  if((millis() - lastHeartbeat) > 11000) isLinked = false;
 
   switch(serialState)
   {
@@ -55,36 +63,110 @@ void loop()
   case LISTENING:
     {
       digitalWrite(13, 1);
-      getOperatingMode();
+      receivePacket();
       digitalWrite(13, 0);
       break;
     }  
   case STREAM:
     {
-      digitalWrite(13,1);
-      stream();
-      digitalWrite(13,0);     
+      digitalWrite(13, 1);
+      isLinked = true;
+      lastHeartbeat = millis();
+      if(sendLiveData() == ERROR) serialState = WAITING;      
+      digitalWrite(13, 0);
       break;
     }
   case DATA_TX:      
     {
-      digitalWrite(13, 1);     
-      ERRORLEVEL = sendEEData();     
-      //Serial.write(ERRORLEVEL);
-      if(ERRORLEVEL == SUCCESS) serialState = WAITING;
+      digitalWrite(13, 1);  
+      if(sendEEData() == SUCCESS) serialState = WAITING;
       digitalWrite(13, 0);
       break;
     }
   case TIME_SET:
     {
       digitalWrite(13, 1);
-      ERRORLEVEL = getSerialTime();   
-      Serial.write(ERRORLEVEL);   
-      if(ERRORLEVEL == SUCCESS) serialState = WAITING;
+      if(getSerialTime() == SUCCESS) serialState = WAITING;
       digitalWrite(13, 0);
       break;
     }
+    case ECHO:
+    {
+      delay(1000);
+      sendPacket(lastPacketData, 0x30, lastPacketLenght);
+      serialState = WAITING;
+      break;
+    }
   }   
+}
+
+boolean waitForSerial(unsigned int time, byte nByte = 1)
+{
+  if(time > 0)
+  {
+    for(int i = 0; i < time; i++)
+    {
+      delay(1);
+      if(Serial.available() >= nByte) return true;
+    }
+    serialState = WAITING;
+    return false;
+  }
+  else while(!Serial.available());
+  return true;  
+}
+
+void waitForPreamble()
+{
+  if(Serial.read() == PREAMBLE)  serialState = LISTENING;
+}
+
+boolean getOperatingMode(byte opCode)
+{   
+  switch(opCode)
+  {
+  case RESET:
+    {      
+      Serial.write(RESET);
+      Reset_AVR();
+      break;
+    }
+  case STREAM:
+    {
+      Serial.write(STREAM);
+      serialState = STREAM;
+      break;
+    }
+  case DATA_TX:
+    {
+      Serial.write(DATA_TX);
+      serialState = DATA_TX;
+      break;
+    }
+  case TIME_SET:
+    {
+      Serial.write(TIME_SET);
+      serialState = TIME_SET;
+      break;
+    }
+  case ECHO:
+    {
+      Serial.write(ECHO);
+      serialState = ECHO;      
+      break;
+    }
+  case HEARTBEAT:
+    {
+      Serial.write(HEARTBEAT);
+      lastHeartbeat = millis();
+      isLinked = true;
+    }
+  default:
+    {
+      return ERROR;
+      break;
+    }
+  }
 }
 
 void update()
@@ -102,7 +184,7 @@ void update()
   }
   data.time[0] = hour();
   data.time[1] = minute();
-  if(serialState != STREAM)
+  if(!isLinked)
   {
     while(!eeprom_is_ready()); 
     cli();
@@ -114,213 +196,125 @@ void update()
   digitalWrite(13, 0);
 }
 
-bool waitForSerial(int time)
-{
-  if(time > 0)
-  {
-    for(int i = 0; i < time; i++)
-    {
-      delay(1);
-      if(Serial.available()) return true;
-    }
-    serialState = WAITING;
-    return false;
-  }
-  else while(!Serial.available());
-  return true;  
-}
-
-void waitForPreamble()
-{
-  if(Serial.read() == 0xAA)
-  {
-    serialState = LISTENING; 
-  }
-}
-
-bool getOperatingMode()
-{ 
-  if(!waitForSerial(TIMEOUT)) return ERROR;
-  switch(Serial.read())
-  {
-  case 0x40:
-    {
-      Serial.write(0x40);
-      if(!waitforSerial(100)) break;
-      Reset_AVR();      
-    }
-  case 0x30:
-    {
-      serialState = STREAM;
-      Serial.write(0x30);
-      break;
-    }
-  case 0x20:
-    {
-      serialState = DATA_TX;
-      Serial.write(0x20);
-      break;
-    }
-  case 0x10:
-    {
-      serialState = TIME_SET;
-      Serial.write(0x10);
-      break;
-    }
-  default:
-    {
-      return ERROR;
-      break;
-    }
-  }
-}
-
-void stream()
-{
-  if(!waitForSerial(11000)) 
-  {
-    serialState = WAITING;
-    return;  
-  }
-  switch(Serial.read())
-  {
-  case 0x31:
-    {
-      Serial.write(0x31);
-      break;
-    }
-  case 0x32:
-    {
-      Serial.write(0x32);
-      update();
-      while(sendLiveData() != SUCCESS);
-      break;
-    }
-  case 0x33:
-    {
-      Serial.write(0x33);
-      serialState = WAITING;
-      break;
-    }
-  default:
-    {
-      serialState = WAITING;
-      break;
-    }
-  }
-}
-
-bool sendEEData()
-{
-  byte _crc = 0;
-  byte _buffer = 0;
+boolean sendEEData()
+{  
+  byte _buffer[10];
   sensorData _data;  
-  Serial.write(INDEX);
-
-  for(byte _index = 0; _index < INDEX; _index++)
+  while(INDEX >= 0)
   {
     while(!eeprom_is_ready());
     cli();   
     eeprom_read_block((void*)&_data, (void*)(sizeof(sensorData)*1), sizeof(sensorData));    
-    sei();
-    while(!eeprom_is_ready());
-    _crc = 0;
+    sei();  
     for(byte i = 0; i < SENSORS; i++)
     { 
-      _buffer = (_data.value[i] & 0x300) >> 8;
-      _crc ^= _buffer;
-      Serial.write(_buffer);
-      _buffer = _data.value[i] & 0xFF;
-      _crc ^= _buffer;
-      Serial.write(_buffer);
-    }  
-
-    Serial.write(_crc);
-
-    if(!waitForSerial(TIMEOUT)) return ERROR;
-    if(Serial.read() != 0x00) return ERROR;
-
-    _crc = 0;  
-    _crc ^= _data.time[0];
-    _crc ^= _data.time[1]; 
-    Serial.write(_data.time[0]);
-    Serial.write(_data.time[1]);
-    Serial.write(_crc);
-
-    if(!waitForSerial(TIMEOUT)) return ERROR;
-    if(Serial.read() != 0x00) return ERROR;    
-  }
-  INDEX = 0; 
-  return SUCCESS;
+      _buffer[i] = (_data.value[i] & 0x300) >> 8; 
+      _buffer[i+1] = _data.value[i] & 0xFF; 
+    }
+    _buffer[8] = _data.time[0];
+    _buffer[9] = _data.time[1]; 
+    if(sendPacket(_buffer, DATA_TX, 10)) INDEX--;
+  } 
+  return INDEX == 0;
 }
 
-bool sendLiveData()
+boolean sendLiveData()
 {
-  byte _crc = 0;
-  byte _buffer = 0; 
+  byte _buffer[10]; 
   for(byte i = 0; i < SENSORS; i++)
   { 
-    _buffer = (data.value[i] & 0x300) >> 8;
-    _crc ^= _buffer;
-    Serial.write(_buffer);
-    _buffer = data.value[i] & 0xFF;
-    _crc ^= _buffer;
-    Serial.write(_buffer);
-  }  
-
-  Serial.write(_crc);
-
-  if(!waitForSerial(TIMEOUT)) return ERROR;
-  if(Serial.read() != 0x00) return ERROR;
-
-  _crc = 0;  
-  _crc ^= data.time[0];
-  _crc ^= data.time[1]; 
-  Serial.write(data.time[0]);
-  Serial.write(data.time[1]);
-  Serial.write(_crc);
-
-  if(!waitForSerial(TIMEOUT)) return ERROR;
-  if(Serial.read() != 0x00) return ERROR;    
-  return SUCCESS;
-}
-
-bool getSerialTime()
-{
-  if(!waitForSerial(TIMEOUT)) return ERROR;
-  byte hh = Serial.read();  
-  if(!waitForSerial(TIMEOUT)) return ERROR;
-  byte mm = Serial.read();  
-  if(!waitForSerial(TIMEOUT)) return ERROR;
-  byte ss = Serial.read();  
-  if(!waitForSerial(TIMEOUT)) return ERROR;
-  byte _crc = 0;
-  _crc ^= hh;
-  _crc ^= mm;
-  _crc ^= ss;
-  if(Serial.read() != _crc) return ERROR;
-  setTime(hh, mm, ss, 00, 00, 00);
-  return SUCCESS;
-}
-
-byte CRC8(const byte *data, byte len) 
-{
-  byte _crc = 0x00;
-  while (len--) 
-  {
-    byte extract = *data++;
-    for (byte i = 8; i; i--) 
-    {
-      byte sum = (_crc ^ extract) & 0x01;
-      _crc >>= 1;
-      if (sum)
-      {
-        _crc ^= 0x8C;
-      }
-      extract >>= 1;
-    }
+    _buffer[i] = (data.value[i] & 0x300) >> 8; 
+    _buffer[i+1] = data.value[i] & 0xFF; 
   }
-  return _crc;
+  _buffer[8] = data.time[0];
+  _buffer[9] = data.time[1];
+  return sendPacket(_buffer, STREAM, 10);
 }
+
+boolean getSerialTime()
+{
+  if(lastPacketLenght == 3)
+  {
+    setTime(lastPacketData[0], lastPacketData[3], lastPacketData[2], 00, 00, 00);
+    Serial.write(0x00);
+    Serial.write(0x00);
+    return SUCCESS;
+  }
+  Serial.write(0xFF);
+  Serial.write(0xFF);
+  return ERROR;
+}
+
+boolean sendPacket(byte* payload, byte OpCode, byte lenght)
+{  
+  byte packet[3 + lenght];
+  packet[0] = 0xAA;
+  packet[1] = OpCode;  
+  packet[2] = lenght;
+  
+  for(int i = 0; i < lenght; i++) packet[i+3] = payload[i];
+  byte retry = 0;
+  do 
+  { 
+    for(int i = 0; i < lenght+3; i++) Serial.write(packet[i]);
+    Serial.write(computeCRC(packet, lenght+3));
+    if(!waitForSerial(TIMEOUT, 2))
+    {
+      retry++;
+      continue;
+    }
+    else if(Serial.read() == 0x00 && Serial.read() == 0x00)  return SUCCESS; 
+    else  retry = 0;
+  }
+  while(retry <= 10);
+  return ERROR;
+}
+
+boolean receivePacket()
+{   
+  if(!waitForSerial(TIMEOUT, 2)) return ERROR;
+  byte opCode = Serial.read();   
+  byte lenght = Serial.read();
+  
+  byte _buffer[lenght + 3];    
+  _buffer[0] = 0xAA;
+  _buffer[1] = opCode;
+  _buffer[2] = lenght;
+  
+  if(!waitForSerial(TIMEOUT, lenght)) return ERROR;
+  for(int i = 0; i < lenght; i++)  _buffer[i + 3] = Serial.read();
+  
+  if(!waitForSerial(TIMEOUT)) return ERROR;  
+  if(Serial.read() == computeCRC(_buffer, lenght)) 
+  { 
+    lastPacketLenght = lenght;    
+    lastPacketData = new byte[lenght];
+    for(int i = 0; i < lenght; i++) lastPacketData[i] = _buffer[i + 3];    
+    Serial.write(0x00);
+    Serial.write(0x00);
+    getOperatingMode(opCode);
+    return SUCCESS;
+  }
+  Serial.write(0xFF);
+  Serial.write(0xFF);
+  return ERROR;
+}
+
+byte computeCRC(byte* data, byte lenght)
+{
+  byte _crc = 0;
+  for(int i = 0; i < lenght + 3; i++) _crc ^= data[i];
+  return _crc;  
+}
+
+
+
+
+
+
+
+
+
+
 
 

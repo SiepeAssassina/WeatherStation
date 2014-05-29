@@ -13,11 +13,16 @@ namespace WeatherGUI
             public uint[] time;
             public int[] value;
         };
+
         private SerialPort com;
-        private IMainWindow mWindow;
-        private const byte TIME = 0x10;
+        private IMainWindow mWindow;        
         private const byte PREAMBLE = 0xAA;
-        private const byte READ = 0x20;
+        private const byte WAITING = 0x00;
+        private const byte LISTENING = 0x10;
+        private const byte READEE = 0x20;
+        private const byte STREAM = 0x40;
+        private const byte TIME = 0x40;
+        private const byte SENSORS = 0x50;
         private Thread thread = null;
 
         public comHandler(string COM, int baud, IMainWindow mWindow)
@@ -73,13 +78,25 @@ namespace WeatherGUI
             for (int i = 0; i < 10 && safeRead() != 0x33; i++) sendByte(0x33);
             mWindow.updateState(false);
         }
-       
+        
+        public bool sendPacket(byte[] payload, byte OpCode, byte lenght)
+        {
+            byte[] packet = new byte[3 + lenght];
+            packet[0] = 0xAA;
+            packet[1] = OpCode;
+            packet[2] = lenght;
+            for (int i = 0; i < lenght; i++) packet[i + 3] = payload[i];
+            do
+            {
+            }while(safeRead() != 0x00);
+        }
+
         public void stream()
         {
-            sendByte(PREAMBLE);
             mWindow.appendDebug("Initializing stream"); 
-            sendByte(0x30);
-            if (safeRead() != 0x30) thread.Abort();
+            sendByte(PREAMBLE);           
+            sendByte(STREAM);
+            if (safeRead() != STREAM) thread.Abort();
             mWindow.appendDebug("Stream ready");
             sensorData Data;
             byte[] _buffer;
@@ -128,6 +145,7 @@ namespace WeatherGUI
                     mWindow.appendDebug("CrcError");
                     return;
                 }
+
                 Data.time[0] = _buffer[0];
                 Data.time[1] = _buffer[1];
                 sendByte(0x00);
