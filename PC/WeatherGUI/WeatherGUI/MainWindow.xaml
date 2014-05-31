@@ -11,6 +11,7 @@
                 <Grid>
                     <Button Content="Connect" Height="37" HorizontalAlignment="Left" Margin="667,227,0,0" Name="button1" VerticalAlignment="Top" Width="87" Click="connectClick" />
                     <ComboBox Height="23" HorizontalAlignment="Left" Margin="667,198,0,0" Name="comSelectionBox" VerticalAlignment="Top" Width="87" />
+                    <Button Content="RESET uP" Height="48" HorizontalAlignment="Left" Margin="14,216,0,0" Name="rstButton" VerticalAlignment="Top" Width="73" Click="rstClick" Foreground="Red" IsEnabled="False" />
                 </Grid>
             </TabItem>            
         </TabControl>

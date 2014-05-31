@@ -20,10 +20,20 @@ namespace WeatherGUI
         private const byte WAITING = 0x00;
         private const byte LISTENING = 0x10;
         private const byte READEE = 0x20;
-        private const byte STREAM = 0x40;
+        private const byte STREAM = 0x30;
         private const byte TIME = 0x40;
-        private const byte SENSORS = 0x50;
+        private const byte RESET = 0x50;
+        private const byte ECHO = 0x60;
+        private const byte HEARTBEAT = 0x70;
+        private const uint TIMEOUT = 1000;
+        private int pooling = 60000;
+        static public byte[] lastPacketData = null;
+        static public byte lastPacketLenght = 0;
+        static public byte lastPacketOpCode;
         private Thread thread = null;
+        private sensorData Data;
+        private volatile bool shouldStop = false;
+        private volatile bool shouldRst = false;
 
         public comHandler(string COM, int baud, IMainWindow mWindow)
         {
@@ -53,181 +63,112 @@ namespace WeatherGUI
                 return;               
             }
             thread = new Thread(() =>
-            {           
-                for (int i = 0; i < 10; i++)
-                {
-                    if(!sendTime()) continue;
-                    i = 0;
-                    stream();
-                    mWindow.appendDebug("Stream error, retry [" + i.ToString() + "/10]");
-                    Thread.Sleep(1000);
-                }
-                mWindow.appendDebug("Too many fails! Aborting");
-                mWindow.updateState(false);
-                disconnect();
+            {
+                DoWork();
             });  
-            thread.Start();
-            if (thread.IsAlive) mWindow.updateState(true);
-        }
 
-        public void disconnect()
-        {
-            if (!com.IsOpen) return;
-            if (thread != null) thread.Abort();
-            sendByte(0x33);
-            for (int i = 0; i < 10 && safeRead() != 0x33; i++) sendByte(0x33);
-            mWindow.updateState(false);
+            thread.Start();
+            while (!thread.IsAlive) ;
+            mWindow.updateState(true);
         }
         
-        public bool sendPacket(byte[] payload, byte OpCode, byte lenght)
+        public void disconnect()
         {
-            byte[] packet = new byte[3 + lenght];
-            packet[0] = 0xAA;
-            packet[1] = OpCode;
-            packet[2] = lenght;
-            for (int i = 0; i < lenght; i++) packet[i + 3] = payload[i];
-            do
+            try
+            {                
+                if (thread.IsAlive)
+                {
+                    shouldStop = true;                                     
+                }                
+            }
+            catch (Exception e)
             {
-            }while(safeRead() != 0x00);
+                MessageBox.Show(e.ToString());
+            }
         }
 
-        public void stream()
+        public void reset()
         {
-            mWindow.appendDebug("Initializing stream"); 
-            sendByte(PREAMBLE);           
-            sendByte(STREAM);
-            if (safeRead() != STREAM) thread.Abort();
-            mWindow.appendDebug("Stream ready");
-            sensorData Data;
-            byte[] _buffer;
-            while (true)
+            mWindow.appendDebug("Reset sent!");
+            shouldRst = true; 
+        }
+
+        private void DoWork()
+        {
+            System.Diagnostics.Stopwatch wtc = System.Diagnostics.Stopwatch.StartNew();
+            shouldStop = false;
+            byte[] buffer = new byte[] { 0x00, 0x01, 0x03, 0x04 };
+            byte retry = 0;
+            wtc.Start();
+            long currentTime = wtc.ElapsedMilliseconds;
+
+            sendTime();
+            while (retry <= 10 && !shouldStop)
             {
-                for (int i = 0; i < 10; i++)
-                {
-                    mWindow.appendDebug("Sending keep alive...");
-                    sendByte(0x31);
-                    if (safeRead() != 0x31) return;
-                    mWindow.appendDebug("Got keep alive");
-                    Thread.Sleep(1000);
-                }
-                sendByte(0x32);
-                if (safeRead() != 0x32) return;
-                _buffer = new byte[8];
-                Data.value = new int[4];
-                Data.time = new uint[2];
-                for (byte i = 0; i < 8; i++)
-                {
-                    _buffer[i] = (byte)safeRead();
-                }
-                if (safeRead() != computeCRC(_buffer))
-                {
-                    MessageBox.Show("CRC mismatch");
-                    sendByte(0xFF);
-                    mWindow.appendDebug("CrcError");
-                    return;
-                }
-                for (int i = 0; i < 4; i++)
-                {
-                    Data.value[i] = _buffer[2 * i] & 0x3;
-                    Data.value[i] <<= 8;
-                    Data.value[i] += _buffer[(2 * i) + 1] & 0xFF;
-                    mWindow.appendDebug(Data.value[i].ToString());
-                }
-                sendByte(0x00);
-                _buffer = new byte[2];
-                _buffer[0] = (byte)com.ReadByte();
-                _buffer[1] = (byte)com.ReadByte();
+                Thread.Sleep(10000);
 
-                if (computeCRC(_buffer) != com.ReadByte())
+                if (shouldRst)
                 {
-                    MessageBox.Show("CRC mismatch");
-                    sendByte(0xFF);
-                    mWindow.appendDebug("CrcError");
-                    return;
+                    sendPacket(null, RESET, 0);
+                    Thread.Sleep(2000);
+                    shouldRst = false;
+                    mWindow.appendDebug("Resetted!");
+                    sendTime();
                 }
 
-                Data.time[0] = _buffer[0];
-                Data.time[1] = _buffer[1];
-                sendByte(0x00);
-                mWindow.appendDebug(Data.time[0] + ":" + Data.time[1]);
+                if ((wtc.ElapsedMilliseconds - currentTime) > pooling)
+                {
+                    mWindow.appendDebug("Sensorz");
+                    getSensorData();
+                    for (int i = 0; i < 4; i++)
+                        mWindow.appendDebug("Sensor " + i + " -> " + Data.value[i]);
+                    currentTime = wtc.ElapsedMilliseconds;
+                }
+
+                sendPacket(null, HEARTBEAT, 0);
+
+                while (safeRead() != PREAMBLE) ;
+                receivePacket();
+                if (lastPacketOpCode != HEARTBEAT)
+                {
+                    retry++;
+                    mWindow.appendDebug("No answer detected [" + retry + "/10]");
+                    continue;
+                }
+                retry = 0;
+                mWindow.appendDebug("Got heartbeat!");
             }
+            mWindow.appendDebug("Thread has terminated");
+            mWindow.updateState(false);
         }
 
         public void getSensorData()
         {
-            mWindow.appendDebug("Connecting...");
-            sensorData Data;
-            byte[] _buffer;
-
-            sendByte(PREAMBLE);
-            sendByte(READ);
-            if (safeRead() != READ) return;
-            int _index = com.ReadByte();
-            mWindow.appendDebug("Items:" + _index);
-            for (int j = 0; j < _index; j++)
+            sendPacket(null, STREAM, 0);
+            while (safeRead() != PREAMBLE) ;
+            if (receivePacket())
             {
-                _buffer = new byte[8];
                 Data.value = new int[4];
                 Data.time = new uint[2];
-                for (byte i = 0; i < 8; i++)
-                {
-                    _buffer[i] = (byte)com.ReadByte();
-                }
-
-                if (safeRead() != computeCRC(_buffer))
-                {
-                    sendByte(0xFF);
-                    mWindow.appendDebug("CrcError");
-                    return;
-                }
-
                 for (int i = 0; i < 4; i++)
                 {
-                    Data.value[i] = _buffer[2 * i] & 0x3;
+                    Data.value[i] = lastPacketData[2 * i] & 0x3;
                     Data.value[i] <<= 8;
-                    Data.value[i] += _buffer[(2 * i) + 1] & 0xFF;
-                    Console.WriteLine(Data.value[i]);
+                    Data.value[i] += lastPacketData[(2 * i) + 1] & 0xFF;
                 }
-
-                sendByte(0x00);
-
-                _buffer = new byte[2];
-                _buffer[0] = (byte)com.ReadByte();
-                _buffer[1] = (byte)com.ReadByte();
-
-                if (computeCRC(_buffer) != com.ReadByte())
-                {
-                    sendByte(0xFF);
-                    mWindow.appendDebug("CrcError");
-                    return;
-                }
-
-                Data.time[0] = _buffer[0];
-                Data.time[1] = _buffer[1];
-
-                mWindow.appendDebug(Data.time[0] + ":" + Data.time[1]);
-                sendByte(0x00);
+                Data.time[0] = lastPacketData[8];
+                Data.time[1] = lastPacketData[9];
             }
         }
 
         public bool sendTime()
         {
-            sendByte((byte)PREAMBLE);
-            mWindow.appendDebug("Connecting...");
-            sendByte((byte)TIME);
-            if (safeRead() != TIME) return false;
-            do
-            {
-                mWindow.appendDebug("Sending time " + string.Format("{0:HH:mm:ss tt}", DateTime.Now));
-                byte[] time = new byte[] { 0, 0, 0, 0 };
-                time[0] = (byte)DateTime.Now.Hour;
-                time[1] = (byte)DateTime.Now.Minute;
-                time[2] = (byte)DateTime.Now.Second;
-                time[3] = computeCRC(time);
-                sendByte(time);
-            } while (safeRead() != 0x0);
-            mWindow.appendDebug("Success");
-            return true;
+            mWindow.appendDebug("Sending time " + string.Format("{0:HH:mm:ss tt}", DateTime.Now));
+            byte[] time = new byte[] { 0, 0, 0, 0 };
+            time[0] = (byte)DateTime.Now.Hour;
+            time[1] = (byte)DateTime.Now.Minute;
+            time[2] = (byte)DateTime.Now.Second;
+            return sendPacket(time, TIME, 3); 
         }
 
         private void sendByte(params byte[] b)
@@ -247,6 +188,77 @@ namespace WeatherGUI
             byte _crc = 0;
             for (int i = 0; i < b.Length; i++) _crc ^= b[i];
             return _crc;
+        }
+
+        private bool sendPacket(byte[] payload, byte OpCode, byte lenght)
+        {
+            byte[] packet = new byte[3 + lenght];
+            packet[0] = 0xAA;
+            packet[1] = OpCode;
+            packet[2] = lenght;
+            for (int i = 0; i < lenght; i++) packet[i + 3] = payload[i];
+            byte retry = 0;
+            do
+            {
+                sendByte(packet);
+                sendByte(computeCRC(packet));
+                if (!waitForSerial(TIMEOUT, 2))
+                {
+                    retry++;
+                    continue;
+                }
+                if(safeRead() == 0x00 && safeRead() == 0x00) return true;
+                else retry = 0;
+            } while (retry <= 10);
+            return true;
+        }
+
+        private bool receivePacket()
+        {
+            if (!waitForSerial(TIMEOUT, 2)) return false;
+            int opCode = safeRead();
+            int lenght = safeRead();
+
+            if (opCode == -1 || lenght == -1) return false;
+            
+            byte[] buffer = new byte[lenght + 3];
+            buffer[0] = 0xAA;
+            buffer[1] = (byte)opCode;
+            buffer[2] = (byte)lenght;
+            if (lenght > 0)
+            {
+                lastPacketData = null;
+                lastPacketLenght = 0;
+                if (!waitForSerial(TIMEOUT, (byte)lenght)) return false;
+                for (int i = 0; i < lenght; i++) buffer[i + 3] = (byte)safeRead();
+            }
+
+            if (!waitForSerial(TIMEOUT)) return false;
+            if ((byte)safeRead() == computeCRC(buffer))
+            {
+                lastPacketOpCode = (byte)opCode;
+                lastPacketLenght = (byte)lenght;
+                lastPacketData = new byte[lenght];
+                for (int i = 0; i < lenght; i++)
+                    lastPacketData[i] = buffer[i + 3];
+                sendByte(0x00, 0x00);
+                return true;
+            }
+            Console.WriteLine("CRCERROR");
+            return false;
+        }
+
+        private bool waitForSerial(uint time, byte bytes = 1)
+        {
+            if (time > 0)
+            {
+                int currentTime = DateTime.Now.Millisecond;
+                while (DateTime.Now.Millisecond - currentTime < time)
+                    if (com.BytesToRead >= bytes) return true;
+                Console.WriteLine("TIMEOUT");
+                return false;
+            }
+            while (true) if (com.BytesToRead >= bytes) return true;
         }
 
         private int safeRead()

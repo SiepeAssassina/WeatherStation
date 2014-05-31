@@ -29,6 +29,7 @@ data;
 
 byte lastPacketLenght = 0;
 byte *lastPacketData = NULL;
+byte lastPacketOpCode = WAITING;
 byte serialState = WAITING;
 byte INDEX = 0;
 boolean isLinked = false;
@@ -36,7 +37,7 @@ unsigned long int lastHeartbeat = 0;
 
 void setup()
 {
-  Serial.begin(1200, SERIAL_8N1);
+  Serial.begin(600, SERIAL_8N1);
   analogReference(EXTERNAL);
   pinMode(13, OUTPUT);
   digitalWrite(13, 0);
@@ -44,12 +45,12 @@ void setup()
 }
 
 void loop()
-{   
+{  
   if(millis() % POOLING == 0 && serialState == WAITING)
   {       
     update();       
   }
-  
+
   if((millis() - lastHeartbeat) > 11000) isLinked = false;
 
   switch(serialState)
@@ -64,6 +65,7 @@ void loop()
     {
       digitalWrite(13, 1);
       receivePacket();
+      getOperatingMode(lastPacketOpCode);
       digitalWrite(13, 0);
       break;
     }  
@@ -72,7 +74,8 @@ void loop()
       digitalWrite(13, 1);
       isLinked = true;
       lastHeartbeat = millis();
-      if(sendLiveData() == ERROR) serialState = WAITING;      
+      update();
+      if(sendLiveData() == SUCCESS) serialState = WAITING;      
       digitalWrite(13, 0);
       break;
     }
@@ -90,11 +93,12 @@ void loop()
       digitalWrite(13, 0);
       break;
     }
-    case ECHO:
+  case ECHO:
     {
-      delay(1000);
-      sendPacket(lastPacketData, 0x30, lastPacketLenght);
+      digitalWrite(13, 1);
+      sendPacket(lastPacketData, ECHO, lastPacketLenght);
       serialState = WAITING;
+      digitalWrite(13, 0);
       break;
     }
   }   
@@ -124,45 +128,46 @@ void waitForPreamble()
 boolean getOperatingMode(byte opCode)
 {   
   switch(opCode)
-  {
+  {    
   case RESET:
-    {      
-      Serial.write(RESET);
+    {    
       Reset_AVR();
       break;
     }
   case STREAM:
     {
-      Serial.write(STREAM);
+      //sendPacket(NULL, STREAM, 0);
       serialState = STREAM;
       break;
     }
   case DATA_TX:
-    {
-      Serial.write(DATA_TX);
+    { 
+      //sendPacket(NULL, DATA_TX, 0);
       serialState = DATA_TX;
       break;
     }
   case TIME_SET:
     {
-      Serial.write(TIME_SET);
+      //sendPacket(NULL, TIME_SET, 0);
       serialState = TIME_SET;
       break;
     }
   case ECHO:
     {
-      Serial.write(ECHO);
+      //sendPacket(NULL, ECHO, 0);
       serialState = ECHO;      
       break;
     }
   case HEARTBEAT:
-    {
-      Serial.write(HEARTBEAT);
+    {      
+      serialState = WAITING;
+      sendPacket(NULL, HEARTBEAT, 0);
       lastHeartbeat = millis();
       isLinked = true;
     }
   default:
     {
+      //sendPacket(NULL, ERROR, 0);
       return ERROR;
       break;
     }
@@ -172,16 +177,18 @@ boolean getOperatingMode(byte opCode)
 void update()
 {
   digitalWrite(13, 1);  
-  if(INDEX > 102) INDEX = 0;   
+  if(INDEX > 102) INDEX = 0; 
+  long _buffer[4];  
   for(int j = 0; j < SENSORS; j++)
   {
-    data.value[j] = 0;
-    for(int i = 0; i < 4; i++)
+    _buffer[j] = 0;
+    for(int i = 0; i < 16; i++)
     {      
-      data.value[j] += analogRead(j); 
+      _buffer[j] += analogRead(j); 
     }
-    data.value[j] >> 2;
+    data.value[j] = (_buffer[j] >> 4) & 0xFFFF;
   }
+
   data.time[0] = hour();
   data.time[1] = minute();
   if(!isLinked)
@@ -208,8 +215,8 @@ boolean sendEEData()
     sei();  
     for(byte i = 0; i < SENSORS; i++)
     { 
-      _buffer[i] = (_data.value[i] & 0x300) >> 8; 
-      _buffer[i+1] = _data.value[i] & 0xFF; 
+      _buffer[i*2] = (_data.value[i] & 0x300) >> 8; 
+      _buffer[(i*2)+1] = _data.value[i] & 0xFF; 
     }
     _buffer[8] = _data.time[0];
     _buffer[9] = _data.time[1]; 
@@ -223,8 +230,8 @@ boolean sendLiveData()
   byte _buffer[10]; 
   for(byte i = 0; i < SENSORS; i++)
   { 
-    _buffer[i] = (data.value[i] & 0x300) >> 8; 
-    _buffer[i+1] = data.value[i] & 0xFF; 
+    _buffer[i*2] = (data.value[i] & 0x300) >> 8; 
+    _buffer[(i*2)+1] = data.value[i] & 0xFF; 
   }
   _buffer[8] = data.time[0];
   _buffer[9] = data.time[1];
@@ -235,13 +242,9 @@ boolean getSerialTime()
 {
   if(lastPacketLenght == 3)
   {
-    setTime(lastPacketData[0], lastPacketData[3], lastPacketData[2], 00, 00, 00);
-    Serial.write(0x00);
-    Serial.write(0x00);
+    setTime(lastPacketData[0], lastPacketData[1], lastPacketData[2], 00, 00, 00); 
     return SUCCESS;
-  }
-  Serial.write(0xFF);
-  Serial.write(0xFF);
+  }  
   return ERROR;
 }
 
@@ -251,13 +254,13 @@ boolean sendPacket(byte* payload, byte OpCode, byte lenght)
   packet[0] = 0xAA;
   packet[1] = OpCode;  
   packet[2] = lenght;
-  
+
   for(int i = 0; i < lenght; i++) packet[i+3] = payload[i];
   byte retry = 0;
   do 
   { 
     for(int i = 0; i < lenght+3; i++) Serial.write(packet[i]);
-    Serial.write(computeCRC(packet, lenght+3));
+    Serial.write(computeCRC(packet, lenght));
     if(!waitForSerial(TIMEOUT, 2))
     {
       retry++;
@@ -275,28 +278,30 @@ boolean receivePacket()
   if(!waitForSerial(TIMEOUT, 2)) return ERROR;
   byte opCode = Serial.read();   
   byte lenght = Serial.read();
-  
+
   byte _buffer[lenght + 3];    
   _buffer[0] = 0xAA;
   _buffer[1] = opCode;
   _buffer[2] = lenght;
-  
-  if(!waitForSerial(TIMEOUT, lenght)) return ERROR;
-  for(int i = 0; i < lenght; i++)  _buffer[i + 3] = Serial.read();
-  
+
+  if(lenght > 0)
+  {
+    if(!waitForSerial(TIMEOUT, lenght)) return ERROR;
+    for(int i = 0; i < lenght; i++)  _buffer[i + 3] = Serial.read();
+  }
+
   if(!waitForSerial(TIMEOUT)) return ERROR;  
   if(Serial.read() == computeCRC(_buffer, lenght)) 
   { 
+    free(lastPacketData);
+    lastPacketOpCode = opCode;
     lastPacketLenght = lenght;    
     lastPacketData = new byte[lenght];
-    for(int i = 0; i < lenght; i++) lastPacketData[i] = _buffer[i + 3];    
+    for(int i = 0; i < lenght; i++) lastPacketData[i] = _buffer[i + 3];     
     Serial.write(0x00);
     Serial.write(0x00);
-    getOperatingMode(opCode);
     return SUCCESS;
   }
-  Serial.write(0xFF);
-  Serial.write(0xFF);
   return ERROR;
 }
 
@@ -306,15 +311,5 @@ byte computeCRC(byte* data, byte lenght)
   for(int i = 0; i < lenght + 3; i++) _crc ^= data[i];
   return _crc;  
 }
-
-
-
-
-
-
-
-
-
-
 
 

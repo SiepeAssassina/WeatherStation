@@ -34,14 +34,11 @@ namespace WeatherGUI
             }
             else if (!isOnline)
             {
-                modem.Close();
-                modem = new comHandler(comSelectionBox.SelectedItem.ToString(), 600, (IMainWindow)this);
                 modem.connect();
             }
             else
             {
-                modem.Close();
-                modem = null;
+                modem.disconnect();                
             }
             button1.IsEnabled = true;
             System.Threading.Thread.Sleep(100);
@@ -55,6 +52,7 @@ namespace WeatherGUI
                 button1.Content = b ? "Disconnect" : "Connect";
                 if (b) appendDebug("Connected!");
                 else appendDebug("Disconnected!");
+                rstButton.IsEnabled = b;
             });
             this.Dispatcher.Invoke(action, System.Windows.Threading.DispatcherPriority.Send);
         }
@@ -80,6 +78,11 @@ namespace WeatherGUI
         private void About_Click(object sender, RoutedEventArgs e)
         {
             MessageBox.Show("WeatherGUI for ARDUINO \n Brought to you by Lorenzo Tomasin, 2014");
+        }
+
+        private void rstClick(object sender, RoutedEventArgs e)
+        {
+            modem.reset();
         }
     }
 }
