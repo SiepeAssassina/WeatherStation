@@ -3,6 +3,7 @@ using System.Windows;
 using System.IO.Ports;
 using System.Threading;
 using System.Windows.Threading;
+using System.Diagnostics;
 
 namespace WeatherGUI
 {
@@ -26,7 +27,7 @@ namespace WeatherGUI
         private const byte ECHO = 0x60;
         private const byte HEARTBEAT = 0x70;
         private const uint TIMEOUT = 1000;
-        private int pooling = 60000;
+        public int pooling = 1000;
         static public byte[] lastPacketData = null;
         static public byte lastPacketLenght = 0;
         static public byte lastPacketOpCode;
@@ -64,7 +65,7 @@ namespace WeatherGUI
             }
             thread = new Thread(() =>
             {
-                DoWork();
+                DoWork();               
             });  
 
             thread.Start();
@@ -76,9 +77,12 @@ namespace WeatherGUI
         {
             try
             {                
-                if (thread.IsAlive)
+                if (thread != null && thread.IsAlive)
                 {
-                    shouldStop = true;                                     
+                    shouldStop = true;
+                    thread.Join();
+                    mWindow.appendDebug("Thread has been terminated");
+                    mWindow.updateState(false);    
                 }                
             }
             catch (Exception e)
@@ -89,13 +93,13 @@ namespace WeatherGUI
 
         public void reset()
         {
-            mWindow.appendDebug("Reset sent!");
+            mWindow.appendDebug("Request sent!");
             shouldRst = true; 
         }
 
         private void DoWork()
         {
-            System.Diagnostics.Stopwatch wtc = System.Diagnostics.Stopwatch.StartNew();
+            Stopwatch wtc = Stopwatch.StartNew();
             shouldStop = false;
             byte[] buffer = new byte[] { 0x00, 0x01, 0x03, 0x04 };
             byte retry = 0;
@@ -104,17 +108,7 @@ namespace WeatherGUI
 
             sendTime();
             while (retry <= 10 && !shouldStop)
-            {
-                Thread.Sleep(10000);
-
-                if (shouldRst)
-                {
-                    sendPacket(null, RESET, 0);
-                    Thread.Sleep(2000);
-                    shouldRst = false;
-                    mWindow.appendDebug("Resetted!");
-                    sendTime();
-                }
+            {                          
 
                 if ((wtc.ElapsedMilliseconds - currentTime) > pooling)
                 {
@@ -126,9 +120,9 @@ namespace WeatherGUI
                 }
 
                 sendPacket(null, HEARTBEAT, 0);
+                
+                if (waitForSerial(TIMEOUT) && safeRead() == PREAMBLE) receivePacket();                
 
-                while (safeRead() != PREAMBLE) ;
-                receivePacket();
                 if (lastPacketOpCode != HEARTBEAT)
                 {
                     retry++;
@@ -137,15 +131,28 @@ namespace WeatherGUI
                 }
                 retry = 0;
                 mWindow.appendDebug("Got heartbeat!");
+
+                for (int i = 0; i < pooling; i++)
+                {
+                    Thread.Sleep(1);
+                    if (shouldRst)
+                    {
+                        sendPacket(null, RESET, 0);
+                        Thread.Sleep(4000);
+                        shouldRst = false;
+                        mWindow.appendDebug("Reset!");
+                        sendTime();
+                    }
+                    if (shouldStop) thread.Abort();
+                }  
             }
-            mWindow.appendDebug("Thread has terminated");
-            mWindow.updateState(false);
+            wtc.Stop();                   
         }
 
         public void getSensorData()
         {
             sendPacket(null, STREAM, 0);
-            while (safeRead() != PREAMBLE) ;
+            if (waitForSerial(TIMEOUT) && safeRead() == PREAMBLE)
             if (receivePacket())
             {
                 Data.value = new int[4];
@@ -159,6 +166,12 @@ namespace WeatherGUI
                 Data.time[0] = lastPacketData[8];
                 Data.time[1] = lastPacketData[9];
             }
+            float P = (float)((Data.value[1] / (1024 * 0.009)) + (0.095 / 0.009));
+            int RH = (int)((Data.value[2] / (1024 * 0.00636)) - (0.1515 / 0.00636));
+            mWindow.updateRawData("Temp -> " + Data.value[0] + " ("+ ((Data.value[0]*0.0486)) + " °K)", 0);                      
+            mWindow.updateRawData("Pres -> " + Data.value[1] + " (" + P + " kPa)", 1);            
+            mWindow.updateRawData("Humi -> " + Data.value[2] + " (" + RH + " %RH)", 2);
+            mWindow.updateRawData("Rain -> " + Data.value[3] + " (" + Data.value[3] * (1500F/1024F) + " g)", 3);
         }
 
         public bool sendTime()
@@ -193,7 +206,7 @@ namespace WeatherGUI
         private bool sendPacket(byte[] payload, byte OpCode, byte lenght)
         {
             byte[] packet = new byte[3 + lenght];
-            packet[0] = 0xAA;
+            packet[0] = PREAMBLE;
             packet[1] = OpCode;
             packet[2] = lenght;
             for (int i = 0; i < lenght; i++) packet[i + 3] = payload[i];
@@ -222,7 +235,7 @@ namespace WeatherGUI
             if (opCode == -1 || lenght == -1) return false;
             
             byte[] buffer = new byte[lenght + 3];
-            buffer[0] = 0xAA;
+            buffer[0] = PREAMBLE;
             buffer[1] = (byte)opCode;
             buffer[2] = (byte)lenght;
             if (lenght > 0)
@@ -249,11 +262,13 @@ namespace WeatherGUI
         }
 
         private bool waitForSerial(uint time, byte bytes = 1)
-        {
+        {            
             if (time > 0)
             {
-                int currentTime = DateTime.Now.Millisecond;
-                while (DateTime.Now.Millisecond - currentTime < time)
+                Stopwatch wtc = new Stopwatch();
+                wtc.Start();
+                int currentTime = wtc.Elapsed.Milliseconds;
+                while (wtc.Elapsed.Milliseconds - currentTime < time)
                     if (com.BytesToRead >= bytes) return true;
                 Console.WriteLine("TIMEOUT");
                 return false;
@@ -280,7 +295,8 @@ namespace WeatherGUI
 
         public void Close()
         {
-            disconnect(); 
+            disconnect();            
+            thread.Join();           
             if(com.IsOpen) com.Close();
         }
     }

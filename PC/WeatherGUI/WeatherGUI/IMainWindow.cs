@@ -9,5 +9,6 @@ namespace WeatherGUI
     {
         void appendDebug(string s);
         void updateState(bool b);
+        void updateRawData(string s, int index);
     }
 }

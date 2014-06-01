@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Windows;
+using System.Threading;
 
 namespace WeatherGUI
 {
@@ -7,6 +8,7 @@ namespace WeatherGUI
     {
         comHandler modem;
         bool isOnline = false;
+        public  string[] poolRate = new string[] {"1s", "3s", "10s", "1m", "3m", "10m", "30m", "1h", "2h", "3h"};
         public MainWindow()
         {
             InitializeComponent();           
@@ -14,14 +16,21 @@ namespace WeatherGUI
                 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
+            foreach (string s in poolRate)
+                poolBox.Items.Add(s);
+            rawDataListBox.Items.Add("Temp -> ");
+            rawDataListBox.Items.Add("Pres -> ");
+            rawDataListBox.Items.Add("Humi -> ");
+            rawDataListBox.Items.Add("Rain -> ");
             for (int i = 1; i < 20; i++) comSelectionBox.Items.Add("COM" + i);
             comSelectionBox.SelectedIndex = 0;
             appendDebug("Loaded");           
         }
         
-        private void Window_Closed(object sender, EventArgs e)
-        {            
-            modem.Close();
+        private void Window_Closing(object sender, EventArgs e)
+        {
+            if (modem != null) 
+                modem.Close();   
         }
 
         private void connectClick(object sender, RoutedEventArgs e)
@@ -34,6 +43,8 @@ namespace WeatherGUI
             }
             else if (!isOnline)
             {
+                modem.Close();
+                modem = new comHandler(comSelectionBox.SelectedItem.ToString(), 600, (IMainWindow)this);
                 modem.connect();
             }
             else
@@ -41,7 +52,7 @@ namespace WeatherGUI
                 modem.disconnect();                
             }
             button1.IsEnabled = true;
-            System.Threading.Thread.Sleep(100);
+            Thread.Sleep(1000);
         }
 
         public void updateState(bool b)
@@ -49,10 +60,10 @@ namespace WeatherGUI
             Action action = new Action(() =>
             {
                 isOnline = b;
-                button1.Content = b ? "Disconnect" : "Connect";
-                if (b) appendDebug("Connected!");
-                else appendDebug("Disconnected!");
+                appendDebug(button1.Content + "ed!");
+                button1.Content = b ? "Disconnect" : "Connect";               
                 rstButton.IsEnabled = b;
+                poolBtn.IsEnabled = b;
             });
             this.Dispatcher.Invoke(action, System.Windows.Threading.DispatcherPriority.Send);
         }
@@ -65,13 +76,24 @@ namespace WeatherGUI
                 debugBox.Items.Add(buffer);
                 debugBox.ScrollIntoView(buffer);
             });
-            this.Dispatcher.Invoke(action, System.Windows.Threading.DispatcherPriority.Send);
+            this.Dispatcher.Invoke(action, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        }
+
+        public void updateRawData(string s, int index)
+        {
+            Action action = new Action(() =>
+            {
+                rawDataListBox.Items[index] = s;
+            });
+            this.Dispatcher.Invoke(action, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
         }
 
         private void Exit_Click(object sender, RoutedEventArgs e)
         {
-            if (modem != null) 
+            if (modem != null)
+            {               
                 modem.Close();
+            }
             this.Close();
         }
 
@@ -83,6 +105,32 @@ namespace WeatherGUI
         private void rstClick(object sender, RoutedEventArgs e)
         {
             modem.reset();
+        }
+
+        private void poolBtnClick(object sender, RoutedEventArgs e)
+        {
+            int index = 1000;
+            switch(poolBox.SelectedItem.ToString()[1])
+            {
+                case 's':
+                    {
+                        index = 1;
+                        break;
+                    }
+                case 'm':
+                    {
+                        index = 60;
+                        break;
+                    }
+                case 'h':
+                    {
+                        index = 3600;
+                        break;
+                    }
+            }
+            
+            modem.pooling = index * Int16.Parse(poolBox.SelectedItem.ToString()[0].ToString()) * 1000;
+            MessageBox.Show(modem.pooling.ToString());
         }
     }
 }
