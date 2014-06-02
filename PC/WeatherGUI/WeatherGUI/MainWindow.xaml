@@ -26,9 +26,9 @@
                             <RadioButton Content="°F" Height="16" HorizontalAlignment="Left" Margin="219,180,0,0" Name="FRadioBtn" VerticalAlignment="Top" Width="32" />
                         </Grid>
                     </GroupBox>
-                    <GroupBox Header="Raw data" Height="95" HorizontalAlignment="Right" Margin="0,72,3,0" Name="groupBox3" VerticalAlignment="Top" Width="188">
+                    <GroupBox Header="Raw data" Height="107" HorizontalAlignment="Right" Margin="0,64,3,0" Name="groupBox3" VerticalAlignment="Top" Width="188">
                         <Grid>
-                            <ListBox Height="70" HorizontalAlignment="Left" Name="rawDataListBox" VerticalAlignment="Top" Width="176" />
+                            <ListBox Height="84" HorizontalAlignment="Left" Name="rawDataListBox" VerticalAlignment="Top" Width="176" />
                         </Grid>
                     </GroupBox>
                     <GroupBox Header="Pooling Rate" Height="54" Margin="565,0,0,0" Name="groupBox4" VerticalAlignment="Top" HorizontalAlignment="Left" Width="188">

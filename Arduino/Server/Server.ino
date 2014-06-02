@@ -22,8 +22,9 @@
 
 struct sensorData
 {
-  byte time[2];  
+  byte time[2];    
   unsigned short value[4];
+  unsigned short bandGap;
 }
 data;
 
@@ -33,6 +34,7 @@ byte lastPacketOpCode = WAITING;
 byte serialState = WAITING;
 byte INDEX = 0;
 boolean isLinked = false;
+boolean memoryFull = false;
 unsigned long int lastHeartbeat = 0;
 
 void setup()
@@ -46,11 +48,7 @@ void setup()
 
 void loop()
 {  
-  if(millis() % POOLING == 0 && serialState == WAITING)
-  {       
-    update();       
-  }
-
+  if(millis() % POOLING == 0 && serialState == WAITING) update();
   if((millis() - lastHeartbeat) > 11000) isLinked = false;
 
   switch(serialState)
@@ -135,26 +133,22 @@ boolean getOperatingMode(byte opCode)
       break;
     }
   case STREAM:
-    {
-      //sendPacket(NULL, STREAM, 0);
+    {     
       serialState = STREAM;
       break;
     }
   case DATA_TX:
-    { 
-      //sendPacket(NULL, DATA_TX, 0);
+    {       
       serialState = DATA_TX;
       break;
     }
   case TIME_SET:
-    {
-      //sendPacket(NULL, TIME_SET, 0);
+    {      
       serialState = TIME_SET;
       break;
     }
   case ECHO:
-    {
-      //sendPacket(NULL, ECHO, 0);
+    {      
       serialState = ECHO;      
       break;
     }
@@ -166,8 +160,7 @@ boolean getOperatingMode(byte opCode)
       isLinked = true;
     }
   default:
-    {
-      //sendPacket(NULL, ERROR, 0);
+    {      
       return ERROR;
       break;
     }
@@ -177,7 +170,12 @@ boolean getOperatingMode(byte opCode)
 void update()
 {
   digitalWrite(13, 1);  
-  if(INDEX > 102) INDEX = 0; 
+  if(INDEX > 85)
+  {
+    INDEX = 0;
+    memoryFull = true;
+  }
+
   long _buffer[4];  
   for(int j = 0; j < SENSORS; j++)
   {
@@ -191,6 +189,7 @@ void update()
 
   data.time[0] = hour();
   data.time[1] = minute();
+  data.bandGap = getVCC(); 
   if(!isLinked)
   {
     while(!eeprom_is_ready()); 
@@ -227,7 +226,7 @@ boolean sendEEData()
 
 boolean sendLiveData()
 {
-  byte _buffer[10]; 
+  byte _buffer[12]; 
   for(byte i = 0; i < SENSORS; i++)
   { 
     _buffer[i*2] = (data.value[i] & 0x300) >> 8; 
@@ -235,7 +234,9 @@ boolean sendLiveData()
   }
   _buffer[8] = data.time[0];
   _buffer[9] = data.time[1];
-  return sendPacket(_buffer, STREAM, 10);
+  _buffer[10] = (data.bandGap & 0x300) >> 8;
+  _buffer[11] = data.bandGap & 0xFF;
+  return sendPacket(_buffer, STREAM, 12);
 }
 
 boolean getSerialTime()
@@ -311,5 +312,24 @@ byte computeCRC(byte* data, byte lenght)
   for(int i = 0; i < lenght + 3; i++) _crc ^= data[i];
   return _crc;  
 }
+
+int getVCC()
+{
+  const long InternalRef = 1085L;
+  ADMUX = (0<<REFS1) | (1<<REFS0) | (0<<ADLAR) | (1<<MUX3) | (1<<MUX2) | (1<<MUX1) | (0<<MUX0);
+  delay(50);
+  long mean = 0;
+  for(int i = 0; i < 16; i++)
+  {
+    ADCSRA |= _BV( ADSC );
+    while(((ADCSRA & (1<<ADSC))!= 0));
+    mean += ADC;
+  }
+  mean = (mean >> 4) & 0xFFFF;
+  int VCC =(((InternalRef * 1024L) / mean) + 5L) / 10L;
+  return VCC;
+}
+
+
 
 

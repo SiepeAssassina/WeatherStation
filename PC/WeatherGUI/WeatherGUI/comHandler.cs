@@ -2,7 +2,6 @@
 using System.Windows;
 using System.IO.Ports;
 using System.Threading;
-using System.Windows.Threading;
 using System.Diagnostics;
 
 namespace WeatherGUI
@@ -13,10 +12,11 @@ namespace WeatherGUI
         {
             public uint[] time;
             public int[] value;
+            public int bandGap;
         };
 
-        private SerialPort com;
-        private IMainWindow mWindow;        
+        public volatile bool shouldStop = false;
+        private volatile bool shouldRst = false;   
         private const byte PREAMBLE = 0xAA;
         private const byte WAITING = 0x00;
         private const byte LISTENING = 0x10;
@@ -26,16 +26,16 @@ namespace WeatherGUI
         private const byte RESET = 0x50;
         private const byte ECHO = 0x60;
         private const byte HEARTBEAT = 0x70;
-        private const uint TIMEOUT = 1000;
-        public int pooling = 1000;
-        static public byte[] lastPacketData = null;
-        static public byte lastPacketLenght = 0;
-        static public byte lastPacketOpCode;
+        private const uint TIMEOUT = 1000;        
+        public byte[] lastPacketData = null;
+        public byte lastPacketLenght = 0;
+        public byte lastPacketOpCode;
+        public volatile int pooling = 1000;
         private Thread thread = null;
         private sensorData Data;
-        private volatile bool shouldStop = false;
-        private volatile bool shouldRst = false;
-
+        private SerialPort com;
+        private IMainWindow mWindow;    
+ 
         public comHandler(string COM, int baud, IMainWindow mWindow)
         {
             this.mWindow = mWindow;
@@ -55,6 +55,18 @@ namespace WeatherGUI
             {
                 MessageBox.Show(e.ToString());                
             }                      
+        }
+
+        public void Close()
+        {
+            Thread killer = new Thread(() =>
+            {
+                disconnect();
+                if(thread != null)
+                    thread.Join();
+                if (com.IsOpen) com.Close();
+            });
+            killer.Start();
         }
 
         public void connect()
@@ -79,10 +91,7 @@ namespace WeatherGUI
             {                
                 if (thread != null && thread.IsAlive)
                 {
-                    shouldStop = true;
-                    thread.Join();
-                    mWindow.appendDebug("Thread has been terminated");
-                    mWindow.updateState(false);    
+                    shouldStop = true;                   
                 }                
             }
             catch (Exception e)
@@ -99,8 +108,7 @@ namespace WeatherGUI
 
         private void DoWork()
         {
-            Stopwatch wtc = Stopwatch.StartNew();
-            shouldStop = false;
+            Stopwatch wtc = Stopwatch.StartNew();            
             byte[] buffer = new byte[] { 0x00, 0x01, 0x03, 0x04 };
             byte retry = 0;
             wtc.Start();
@@ -108,17 +116,7 @@ namespace WeatherGUI
 
             sendTime();
             while (retry <= 10 && !shouldStop)
-            {                          
-
-                if ((wtc.ElapsedMilliseconds - currentTime) > pooling)
-                {
-                    mWindow.appendDebug("Sensorz");
-                    getSensorData();
-                    for (int i = 0; i < 4; i++)
-                        mWindow.appendDebug("Sensor " + i + " -> " + Data.value[i]);
-                    currentTime = wtc.ElapsedMilliseconds;
-                }
-
+            {
                 sendPacket(null, HEARTBEAT, 0);
                 
                 if (waitForSerial(TIMEOUT) && safeRead() == PREAMBLE) receivePacket();                
@@ -132,9 +130,20 @@ namespace WeatherGUI
                 retry = 0;
                 mWindow.appendDebug("Got heartbeat!");
 
-                for (int i = 0; i < pooling; i++)
+                for (int i = 0; i < 10000; i++)
                 {
                     Thread.Sleep(1);
+
+                    if ((wtc.ElapsedMilliseconds - currentTime) > pooling)
+                    {
+                        i = 0;
+                        mWindow.appendDebug("Data");
+                        getSensorData();
+                        for (int j = 0; j < 4; j++)
+                            mWindow.appendDebug("Sensor " + j + " -> " + Data.value[j]);
+                        currentTime = wtc.ElapsedMilliseconds;
+                    }
+
                     if (shouldRst)
                     {
                         sendPacket(null, RESET, 0);
@@ -143,38 +152,54 @@ namespace WeatherGUI
                         mWindow.appendDebug("Reset!");
                         sendTime();
                     }
-                    if (shouldStop) thread.Abort();
+
+                    if (shouldStop) break;
                 }  
             }
-            wtc.Stop();                   
+            wtc.Stop();
+            mWindow.appendDebug("Thread has been terminated");
+            mWindow.updateState(false);    
+            shouldStop = false;
         }
 
-        public void getSensorData()
+        private void getSensorData()
         {
-            sendPacket(null, STREAM, 0);
-            if (waitForSerial(TIMEOUT) && safeRead() == PREAMBLE)
-            if (receivePacket())
+            int retry = 0;
+            do
             {
-                Data.value = new int[4];
-                Data.time = new uint[2];
-                for (int i = 0; i < 4; i++)
+                sendPacket(null, STREAM, 0);
+                if (waitForSerial(TIMEOUT) && safeRead() == PREAMBLE)
                 {
-                    Data.value[i] = lastPacketData[2 * i] & 0x3;
-                    Data.value[i] <<= 8;
-                    Data.value[i] += lastPacketData[(2 * i) + 1] & 0xFF;
+                    retry = 0;
+                    if (receivePacket())
+                    {
+                        Data.value = new int[4];
+                        Data.time = new uint[2];
+                        for (int i = 0; i < 4; i++)
+                        {
+                            Data.value[i] = lastPacketData[2 * i] & 0x3;
+                            Data.value[i] <<= 8;
+                            Data.value[i] += lastPacketData[(2 * i) + 1] & 0xFF;
+                        }
+                        Data.time[0] = lastPacketData[8];
+                        Data.time[1] = lastPacketData[9];
+                        Data.bandGap = lastPacketData[10] & 0x3;
+                        Data.bandGap <<= 8;
+                        Data.bandGap += lastPacketData[11] & 0xFF;
+                        float P = (float)((Data.value[1] / (1024 * 0.009)) + (0.095 / 0.009));
+                        int RH = (int)((Data.value[2] / (1024 * 0.00636)) - (0.1515 / 0.00636));
+                        mWindow.updateRawData("Temp -> " + Data.value[0] + " (" + ((Data.value[0] * 0.0486)) + " °K)", 0);
+                        mWindow.updateRawData("Pres -> " + Data.value[1] + " (" + P + " kPa)", 1);
+                        mWindow.updateRawData("Humi -> " + Data.value[2] + " (" + RH + " %RH)", 2);
+                        mWindow.updateRawData("Rain -> " + Data.value[3] + " (" + Data.value[3] * (1500F / 1024F) + " g)", 3);
+                        mWindow.updateRawData("Vcc -> " + Data.bandGap + " (" + ((Data.bandGap) / 100F) + " V)", 4);
+                        return;
+                    }
                 }
-                Data.time[0] = lastPacketData[8];
-                Data.time[1] = lastPacketData[9];
-            }
-            float P = (float)((Data.value[1] / (1024 * 0.009)) + (0.095 / 0.009));
-            int RH = (int)((Data.value[2] / (1024 * 0.00636)) - (0.1515 / 0.00636));
-            mWindow.updateRawData("Temp -> " + Data.value[0] + " ("+ ((Data.value[0]*0.0486)) + " °K)", 0);                      
-            mWindow.updateRawData("Pres -> " + Data.value[1] + " (" + P + " kPa)", 1);            
-            mWindow.updateRawData("Humi -> " + Data.value[2] + " (" + RH + " %RH)", 2);
-            mWindow.updateRawData("Rain -> " + Data.value[3] + " (" + Data.value[3] * (1500F/1024F) + " g)", 3);
+            }while (retry++ <= 10);
         }
 
-        public bool sendTime()
+        private bool sendTime()
         {
             mWindow.appendDebug("Sending time " + string.Format("{0:HH:mm:ss tt}", DateTime.Now));
             byte[] time = new byte[] { 0, 0, 0, 0 };
@@ -264,13 +289,13 @@ namespace WeatherGUI
         private bool waitForSerial(uint time, byte bytes = 1)
         {            
             if (time > 0)
-            {
-                Stopwatch wtc = new Stopwatch();
-                wtc.Start();
-                int currentTime = wtc.Elapsed.Milliseconds;
-                while (wtc.Elapsed.Milliseconds - currentTime < time)
-                    if (com.BytesToRead >= bytes) return true;
-                Console.WriteLine("TIMEOUT");
+            {                         
+                for(int i = 0; i < time; i++)
+                {
+                    Thread.Sleep(1);
+                    if (com.BytesToRead >= bytes) return true;                   
+                }
+                mWindow.appendDebug("TIMEOUT");
                 return false;
             }
             while (true) if (com.BytesToRead >= bytes) return true;
@@ -291,13 +316,6 @@ namespace WeatherGUI
                 MessageBox.Show(e.ToString());
             }
             return -1;
-        }
-
-        public void Close()
-        {
-            disconnect();            
-            thread.Join();           
-            if(com.IsOpen) com.Close();
-        }
+        }        
     }
 }

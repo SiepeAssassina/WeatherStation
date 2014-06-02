@@ -22,6 +22,7 @@ namespace WeatherGUI
             rawDataListBox.Items.Add("Pres -> ");
             rawDataListBox.Items.Add("Humi -> ");
             rawDataListBox.Items.Add("Rain -> ");
+            rawDataListBox.Items.Add("Vcc -> ");
             for (int i = 1; i < 20; i++) comSelectionBox.Items.Add("COM" + i);
             comSelectionBox.SelectedIndex = 0;
             appendDebug("Loaded");           
@@ -44,6 +45,7 @@ namespace WeatherGUI
             else if (!isOnline)
             {
                 modem.Close();
+                Thread.Sleep(10);
                 modem = new comHandler(comSelectionBox.SelectedItem.ToString(), 600, (IMainWindow)this);
                 modem.connect();
             }
@@ -56,7 +58,7 @@ namespace WeatherGUI
         }
 
         public void updateState(bool b)
-        {
+        {            
             Action action = new Action(() =>
             {
                 isOnline = b;
@@ -80,7 +82,7 @@ namespace WeatherGUI
         }
 
         public void updateRawData(string s, int index)
-        {
+        { 
             Action action = new Action(() =>
             {
                 rawDataListBox.Items[index] = s;
@@ -110,26 +112,11 @@ namespace WeatherGUI
         private void poolBtnClick(object sender, RoutedEventArgs e)
         {
             int index = 1000;
-            switch(poolBox.SelectedItem.ToString()[1])
-            {
-                case 's':
-                    {
-                        index = 1;
-                        break;
-                    }
-                case 'm':
-                    {
-                        index = 60;
-                        break;
-                    }
-                case 'h':
-                    {
-                        index = 3600;
-                        break;
-                    }
-            }
-            
-            modem.pooling = index * Int16.Parse(poolBox.SelectedItem.ToString()[0].ToString()) * 1000;
+            string item = poolBox.SelectedItem.ToString();
+            if (item.Contains("s")) index = 1;
+            else if (item.Contains("m")) index = 60;
+            else if (item.Contains("h")) index = 3600;
+            modem.pooling = index * Int16.Parse(item.Remove(item.Length - 1)) * 1000;
             MessageBox.Show(modem.pooling.ToString());
         }
     }
