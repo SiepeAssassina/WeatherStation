@@ -8,11 +8,11 @@ namespace WeatherGUI
 {
     class comHandler
     {
-        struct sensorData
+        public struct sensorData
         {
             public uint[] time;
             public int[] value;
-            public int bandGap;
+            public int bandGap;            
         };
 
         public volatile bool shouldStop = false;
@@ -26,15 +26,15 @@ namespace WeatherGUI
         private const byte RESET = 0x50;
         private const byte ECHO = 0x60;
         private const byte HEARTBEAT = 0x70;
-        private const uint TIMEOUT = 1000;        
+        private const uint TIMEOUT = 1000;
         public byte[] lastPacketData = null;
         public byte lastPacketLenght = 0;
         public byte lastPacketOpCode;
-        public volatile int pooling = 1000;
+        public volatile int pooling = 60000;
         private Thread thread = null;
         private sensorData Data;
-        private SerialPort com;
-        private IMainWindow mWindow;    
+        private volatile SerialPort com;
+        private volatile IMainWindow mWindow;    
  
         public comHandler(string COM, int baud, IMainWindow mWindow)
         {
@@ -45,60 +45,81 @@ namespace WeatherGUI
             com.StopBits = StopBits.One;
             com.Handshake = Handshake.None;
             com.ReadTimeout = 100;
-            com.ReadBufferSize = 8;
+            com.ReadBufferSize = 8;                         
+        }
+
+        public bool Open()
+        {
             try
             {
+                if (com.IsOpen) return false;
+                if (thread != null && thread.IsAlive) return false;
                 com.Open();
-                mWindow.appendDebug("Opened " + COM + " @ " + baud + " baud");
-            }
-            catch (Exception e)
-            {
-                MessageBox.Show(e.ToString());                
-            }                      
-        }
-
-        public void Close()
-        {
-            Thread killer = new Thread(() =>
-            {
-                disconnect();
-                if(thread != null)
-                    thread.Join();
-                if (com.IsOpen) com.Close();
-            });
-            killer.Start();
-        }
-
-        public void connect()
-        {
-            if (!com.IsOpen)
-            {
-                return;               
-            }
-            thread = new Thread(() =>
-            {
-                DoWork();               
-            });  
-
-            thread.Start();
-            while (!thread.IsAlive) ;
-            mWindow.updateState(true);
-        }
-        
-        public void disconnect()
-        {
-            try
-            {                
-                if (thread != null && thread.IsAlive)
-                {
-                    shouldStop = true;                   
-                }                
+                mWindow.appendDebug("Opened " + com.PortName + " @ " + com.BaudRate + " baud");                
+                connect();               
+                return true;
             }
             catch (Exception e)
             {
                 MessageBox.Show(e.ToString());
             }
+            return false;            
         }
+
+        public void Close()
+        {
+            try
+            {
+                if (thread != null && thread.IsAlive)
+                {
+                    shouldStop = true;
+                    thread.Join();
+                }
+            }
+            catch (Exception e)
+            {
+                MessageBox.Show(e.ToString());
+            }
+            try { com.Close(); }
+            catch (Exception) { }
+        }
+
+        public sensorData asyncronousUpdate()
+        {
+            if (thread != null && thread.IsAlive)
+            {
+                sensorData buffer = new sensorData();
+                shouldStop = true;
+                thread.Join();
+                thread = new Thread(() =>
+                {
+                    DoWork();
+                });
+                buffer = getSensorData();
+                thread.Start();
+                return buffer;
+            }
+            else
+            {
+                try
+                {
+                    com.Open();
+                    return getSensorData();
+                }
+                catch (Exception exc) { MessageBox.Show(exc.ToString()); }
+                throw new Exception();
+            }
+        }
+
+        private void connect()
+        {            
+            thread = new Thread(() =>
+            {
+                DoWork();               
+            });            
+            thread.Start();
+            while (!thread.IsAlive) ;            
+        }        
 
         public void reset()
         {
@@ -111,10 +132,12 @@ namespace WeatherGUI
             Stopwatch wtc = Stopwatch.StartNew();            
             byte[] buffer = new byte[] { 0x00, 0x01, 0x03, 0x04 };
             byte retry = 0;
-            wtc.Start();
-            long currentTime = wtc.ElapsedMilliseconds;
+            Data = new sensorData();
+            long currentTime = wtc.ElapsedMilliseconds;   
+            wtc.Start();                    
+            mWindow.updateState(true);
+            sendTime();            
 
-            sendTime();
             while (retry <= 10 && !shouldStop)
             {
                 sendPacket(null, HEARTBEAT, 0);
@@ -138,10 +161,15 @@ namespace WeatherGUI
                     {
                         i = 0;
                         mWindow.appendDebug("Data");
-                        getSensorData();
-                        for (int j = 0; j < 4; j++)
-                            mWindow.appendDebug("Sensor " + j + " -> " + Data.value[j]);
-                        currentTime = wtc.ElapsedMilliseconds;
+                        
+                        try
+                        {
+                            Data = getSensorData();
+                            for (int j = 0; j < 4; j++)
+                                mWindow.appendDebug("Sensor " + j + " -> " + Data.value[j]);
+                        }
+                        catch (Exception) { mWindow.appendDebug("Data acquiring error"); }
+                        finally {   currentTime = wtc.ElapsedMilliseconds;  }
                     }
 
                     if (shouldRst)
@@ -159,11 +187,12 @@ namespace WeatherGUI
             wtc.Stop();
             mWindow.appendDebug("Thread has been terminated");
             mWindow.updateState(false);    
-            shouldStop = false;
+            shouldStop = false;            
         }
 
-        private void getSensorData()
+        private sensorData getSensorData()
         {
+            sensorData buffer = new sensorData();           
             int retry = 0;
             do
             {
@@ -173,30 +202,31 @@ namespace WeatherGUI
                     retry = 0;
                     if (receivePacket())
                     {
-                        Data.value = new int[4];
-                        Data.time = new uint[2];
+                        buffer.value = new int[4];
+                        buffer.time = new uint[2];
                         for (int i = 0; i < 4; i++)
                         {
-                            Data.value[i] = lastPacketData[2 * i] & 0x3;
-                            Data.value[i] <<= 8;
-                            Data.value[i] += lastPacketData[(2 * i) + 1] & 0xFF;
+                            buffer.value[i] = lastPacketData[2 * i] & 0x3;
+                            buffer.value[i] <<= 8;
+                            buffer.value[i] += lastPacketData[(2 * i) + 1] & 0xFF;
                         }
-                        Data.time[0] = lastPacketData[8];
-                        Data.time[1] = lastPacketData[9];
-                        Data.bandGap = lastPacketData[10] & 0x3;
-                        Data.bandGap <<= 8;
-                        Data.bandGap += lastPacketData[11] & 0xFF;
-                        float P = (float)((Data.value[1] / (1024 * 0.009)) + (0.095 / 0.009));
-                        int RH = (int)((Data.value[2] / (1024 * 0.00636)) - (0.1515 / 0.00636));
-                        mWindow.updateRawData("Temp -> " + Data.value[0] + " (" + ((Data.value[0] * 0.0486)) + " °K)", 0);
-                        mWindow.updateRawData("Pres -> " + Data.value[1] + " (" + P + " kPa)", 1);
-                        mWindow.updateRawData("Humi -> " + Data.value[2] + " (" + RH + " %RH)", 2);
-                        mWindow.updateRawData("Rain -> " + Data.value[3] + " (" + Data.value[3] * (1500F / 1024F) + " g)", 3);
-                        mWindow.updateRawData("Vcc -> " + Data.bandGap + " (" + ((Data.bandGap) / 100F) + " V)", 4);
-                        return;
+                        buffer.time[0] = lastPacketData[8];
+                        buffer.time[1] = lastPacketData[9];
+                        buffer.bandGap = lastPacketData[10] & 0x3;
+                        buffer.bandGap <<= 8;
+                        buffer.bandGap += lastPacketData[11] & 0xFF;
+                        float P = (float)((buffer.value[1] / (1024 * 0.009)) + (0.095 / 0.009));
+                        int RH = (int)((buffer.value[2] / (1024 * 0.00636)) - (0.1515 / 0.00636));
+                        mWindow.updateRawData("Temp -> " + buffer.value[0] + " (" + ((buffer.value[0] * 0.0486)) + " °K)", 0);
+                        mWindow.updateRawData("Pres -> " + buffer.value[1] + " (" + P + " kPa)", 1);
+                        mWindow.updateRawData("Humi -> " + buffer.value[2] + " (" + RH + " %RH)", 2);
+                        mWindow.updateRawData("Rain -> " + buffer.value[3] + " (" + buffer.value[3] * (1500F / 1024F) + " g)", 3);
+                        mWindow.updateRawData("Vcc -> " + buffer.bandGap + " (" + ((buffer.bandGap) / 100F) + " V)", 4);
+                        return buffer;
                     }
                 }
             }while (retry++ <= 10);
+            throw new Exception();
         }
 
         private bool sendTime()
@@ -282,7 +312,7 @@ namespace WeatherGUI
                 sendByte(0x00, 0x00);
                 return true;
             }
-            Console.WriteLine("CRCERROR");
+            mWindow.appendDebug("CRCERROR");
             return false;
         }
 

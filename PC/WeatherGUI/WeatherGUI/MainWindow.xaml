@@ -4,10 +4,10 @@
         Title="Weather GUI" Height="480" Width="800" Loaded="Window_Loaded" ResizeMode="CanMinimize" WindowStyle="SingleBorderWindow" Closing="Window_Closing" >
     <Grid>
         <TabControl Height="306" HorizontalAlignment="Left" Margin="10,27,0,0" Name="tabControl1" VerticalAlignment="Top" Width="766">
-            <TabItem Header="tabItem1" Name="tabItem1">
+            <TabItem Header="Weather NOW!" Name="rabItem1">
                 <Grid></Grid>
             </TabItem>
-            <TabItem Header="tabItem1" Name="tabItem2">
+            <TabItem Header="Settings and miscellaneous" Name="tabItem2">
                 <Grid>                    
                     <GroupBox Header="COM Control" Height="98" Margin="565,176,0,0" Name="groupBox1" VerticalAlignment="Top" HorizontalAlignment="Left" Width="188">
                         <Grid>
@@ -20,10 +20,35 @@
                             <Button Content="RESET uP" Height="37" HorizontalAlignment="Left" Margin="4,33,0,0" Name="rstButton" VerticalAlignment="Top" Width="73" Click="rstClick" Foreground="Red" IsEnabled="False" Grid.ColumnSpan="2" />
                         </Grid>
                     </GroupBox>
-                    <GroupBox Header="Sensor settings" Height="274" HorizontalAlignment="Left" Margin="6,0,0,0" Name="groupBox2" VerticalAlignment="Top" Width="559">
+                    <GroupBox Header="Sensors settings" Height="274" HorizontalAlignment="Left" Margin="6,0,0,0" Name="groupBox2" VerticalAlignment="Top" Width="559">
                         <Grid Width="548">
-                            <RadioButton Content="°C" Height="16" HorizontalAlignment="Left" Margin="219,158,0,0" Name="CRadioBtn" VerticalAlignment="Top" Width="32" />
-                            <RadioButton Content="°F" Height="16" HorizontalAlignment="Left" Margin="219,180,0,0" Name="FRadioBtn" VerticalAlignment="Top" Width="32" />
+                            <GroupBox Header="Temperature" Height="91" HorizontalAlignment="Left" Margin="6,3,0,0" Name="groupBox5" VerticalAlignment="Top" Width="178">
+                                <Grid>
+                                    <TextBox Height="23" Margin="81,41,0,0" Name="userTempTxtBox" VerticalAlignment="Top" HorizontalAlignment="Left" Width="43" />
+                                    <TextBlock Height="23" HorizontalAlignment="Left" Margin="6,6,0,0" Name="currentTempTxtBlk" Text="Current temp: --" VerticalAlignment="Top" Width="94" />
+                                    <Button Content="OK" Height="23" HorizontalAlignment="Left" Margin="130,41,0,0" Name="clbTempBtn" VerticalAlignment="Top" Width="32" Click="clbTempBtnClick" />
+                                    <RadioButton Content="°C" HorizontalAlignment="Left" Margin="130,1,0,0" Name="CRadioBtn" Width="32" Height="16" VerticalAlignment="Top" />
+                                    <RadioButton Content="°F" Height="16" HorizontalAlignment="Left" Margin="130,19,0,0" Name="FRadioBtn" VerticalAlignment="Top" Width="32" />
+                                    <TextBlock Height="20" HorizontalAlignment="Left" Margin="6,41,0,0" Name="staticTxtBlk1" Text="User defined:" VerticalAlignment="Top" Width="69" />
+                                </Grid>
+                            </GroupBox>
+                            <GroupBox Header="Rain Gauge" Height="243" HorizontalAlignment="Left" Margin="184,3,0,0" Name="clbLdCellBtn" VerticalAlignment="Top" Width="358">
+                                <Grid>
+                                    <Button Content="Calibrate Now" Margin="248,31,0,0" Name="calibrateLdCellBtn" Height="23" VerticalAlignment="Top" HorizontalAlignment="Left" Width="92" Click="calibrateLdCellBtnClick" />
+                                    <TextBlock Height="23" HorizontalAlignment="Left" Margin="6,31,0,0" Name="staticTxtBlk2" Text="Sample weight value [g]:" VerticalAlignment="Top" Width="138" />
+                                    <TextBox Height="23" HorizontalAlignment="Left" Margin="150,31,0,0" Name="rainSampleWTxtBox" VerticalAlignment="Top" Width="55" />
+                                    <TextBlock Height="23" HorizontalAlignment="Left" Margin="6,6,0,0" Name="staticTxtBlk3" Text="Be sure to remove any load from the cell before calibrating!" VerticalAlignment="Top" Width="334" Foreground="Red" />
+                                    <Button Content="Save" Height="33" HorizontalAlignment="Left" Margin="248,181,0,0" Name="rainSaveBtn" VerticalAlignment="Top" Width="92" Click="rainSaveBtnClick" />
+                                    <TextBlock Height="23" Margin="6,97,0,0" Name="staticTxtBlk4" Text="Rain gauge height:" VerticalAlignment="Top" HorizontalAlignment="Left" Width="109" />
+                                    <TextBox Height="23" HorizontalAlignment="Left" Margin="150,97,0,0" Name="rainHTxtBox" VerticalAlignment="Top" Width="55" />
+                                    <TextBlock Height="23" HorizontalAlignment="Left" Margin="6,125,0,0" Name="staticTxtBlk5" Text="Rain gauge diameter:" VerticalAlignment="Top" Width="122" />
+                                    <TextBox Height="23" HorizontalAlignment="Left" Margin="150,125,0,0" Name="rainDTxtBox" VerticalAlignment="Top" Width="55" />
+                                    <TextBlock Height="23" HorizontalAlignment="Left" Margin="6,152,0,0" Name="staticTxtBlk6" Text="Rain gauge weight:" VerticalAlignment="Top" Width="109" />
+                                    <Button Content="Acquire" Height="23" HorizontalAlignment="Left" Margin="211,151,0,0" Name="rainAcqBtn" VerticalAlignment="Top" Width="55" Click="rainAcqBtnClick" />
+                                    <TextBox Height="23" HorizontalAlignment="Left" Margin="150,152,0,0" Name="rainWTxtBox" VerticalAlignment="Top" Width="55" />
+                                    <TextBlock Height="23" HorizontalAlignment="Left" Margin="6,68,0,0" Name="staticTxtBlk7" Text="Calibrate before!" VerticalAlignment="Top" Width="334" Foreground="Red" />
+                                </Grid>
+                            </GroupBox>
                         </Grid>
                     </GroupBox>
                     <GroupBox Header="Raw data" Height="107" HorizontalAlignment="Right" Margin="0,64,3,0" Name="groupBox3" VerticalAlignment="Top" Width="188">
@@ -40,13 +65,13 @@
                 </Grid>
             </TabItem>            
         </TabControl>
-        <GroupBox Header="Debug" Height="102" HorizontalAlignment="Left" Margin="10,339,0,0" Name="dbgBox" VerticalAlignment="Top" Width="772">
+        <GroupBox Header="Debug" Height="102" HorizontalAlignment="Left" Margin="10,339,0,0" Name="dbgBox" VerticalAlignment="Top" Width="766">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="6*" />
                     <ColumnDefinition Width="752*" />
                 </Grid.ColumnDefinitions>
-                <ListBox Height="66" HorizontalAlignment="Left" Name="debugBox" VerticalAlignment="Top" Width="746" Margin="0,7,0,0" Grid.Column="1" />
+                <ListBox Height="66" HorizontalAlignment="Left" Name="debugBox" VerticalAlignment="Top" Width="740" Margin="0,7,0,0" Grid.Column="1" />
             </Grid>
         </GroupBox>
         <Menu Height="22" HorizontalAlignment="Left" Margin="0,0,0,0" Name="menu1" VerticalAlignment="Top" Width="800">
@@ -55,6 +80,5 @@
                 <MenuItem Name="Exit" Header="E_xit" Click="Exit_Click"/>
             </MenuItem>
         </Menu>
-        
     </Grid>
 </Window>
