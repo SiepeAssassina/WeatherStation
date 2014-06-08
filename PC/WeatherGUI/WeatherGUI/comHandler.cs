@@ -7,14 +7,7 @@ using System.Diagnostics;
 namespace WeatherGUI
 {
     class comHandler
-    {
-        public struct sensorData
-        {
-            public uint[] time;
-            public int[] value;
-            public int bandGap;            
-        };
-
+    {        
         public volatile bool shouldStop = false;
         private volatile bool shouldRst = false;   
         private const byte PREAMBLE = 0xAA;
@@ -137,7 +130,7 @@ namespace WeatherGUI
             wtc.Start();                    
             mWindow.updateState(true);
             sendTime();            
-
+            //getEEData();           
             while (retry <= 10 && !shouldStop)
             {
                 sendPacket(null, HEARTBEAT, 0);
@@ -190,6 +183,24 @@ namespace WeatherGUI
             shouldStop = false;            
         }
 
+        private void getEEData()
+        {
+            sensorData buffer = new sensorData();
+            sendPacket(null, READEE, 0);
+            Thread.Sleep(1);
+            receivePacket();
+            if (lastPacketOpCode != READEE) return;
+            if (lastPacketData[0] == 0 && lastPacketData[1] == 0)
+            {
+                MessageBox.Show("EEPROM empty!");
+                return;
+            }
+            if (lastPacketData[0] == 0xFF)
+            {
+                MessageBox.Show("EEPROM full, " + lastPacketData[1] + " hours lost!");
+            }
+        }
+
         private sensorData getSensorData()
         {
             sensorData buffer = new sensorData();           
@@ -215,13 +226,7 @@ namespace WeatherGUI
                         buffer.bandGap = lastPacketData[10] & 0x3;
                         buffer.bandGap <<= 8;
                         buffer.bandGap += lastPacketData[11] & 0xFF;
-                        float P = (float)((buffer.value[1] / (1024 * 0.009)) + (0.095 / 0.009));
-                        int RH = (int)((buffer.value[2] / (1024 * 0.00636)) - (0.1515 / 0.00636));
-                        mWindow.updateRawData("Temp -> " + buffer.value[0] + " (" + ((buffer.value[0] * 0.0486)) + " °K)", 0);
-                        mWindow.updateRawData("Pres -> " + buffer.value[1] + " (" + P + " kPa)", 1);
-                        mWindow.updateRawData("Humi -> " + buffer.value[2] + " (" + RH + " %RH)", 2);
-                        mWindow.updateRawData("Rain -> " + buffer.value[3] + " (" + buffer.value[3] * (1500F / 1024F) + " g)", 3);
-                        mWindow.updateRawData("Vcc -> " + buffer.bandGap + " (" + ((buffer.bandGap) / 100F) + " V)", 4);
+                        mWindow.updateRawData(buffer);
                         return buffer;
                     }
                 }

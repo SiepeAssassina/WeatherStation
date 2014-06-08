@@ -6,9 +6,9 @@ using System.Text;
 namespace WeatherGUI
 {
     interface IMainWindow 
-    {
+    {        
         void appendDebug(string s);
         void updateState(bool b);
-        void updateRawData(string s, int index);
+        void updateRawData(sensorData data);
     }
 }

@@ -25,7 +25,7 @@
                             <GroupBox Header="Temperature" Height="91" HorizontalAlignment="Left" Margin="6,3,0,0" Name="groupBox5" VerticalAlignment="Top" Width="178">
                                 <Grid>
                                     <TextBox Height="23" Margin="81,41,0,0" Name="userTempTxtBox" VerticalAlignment="Top" HorizontalAlignment="Left" Width="43" />
-                                    <TextBlock Height="23" HorizontalAlignment="Left" Margin="6,6,0,0" Name="currentTempTxtBlk" Text="Current temp: --" VerticalAlignment="Top" Width="94" />
+                                    <TextBlock Height="23" HorizontalAlignment="Left" Margin="6,6,0,0" Name="currentTempTxtBlk" Text="Current temp: --" VerticalAlignment="Top" Width="118" />
                                     <Button Content="OK" Height="23" HorizontalAlignment="Left" Margin="130,41,0,0" Name="clbTempBtn" VerticalAlignment="Top" Width="32" Click="clbTempBtnClick" />
                                     <RadioButton Content="°C" HorizontalAlignment="Left" Margin="130,1,0,0" Name="CRadioBtn" Width="32" Height="16" VerticalAlignment="Top" />
                                     <RadioButton Content="°F" Height="16" HorizontalAlignment="Left" Margin="130,19,0,0" Name="FRadioBtn" VerticalAlignment="Top" Width="32" />
@@ -39,14 +39,13 @@
                                     <TextBox Height="23" HorizontalAlignment="Left" Margin="150,31,0,0" Name="rainSampleWTxtBox" VerticalAlignment="Top" Width="55" />
                                     <TextBlock Height="23" HorizontalAlignment="Left" Margin="6,6,0,0" Name="staticTxtBlk3" Text="Be sure to remove any load from the cell before calibrating!" VerticalAlignment="Top" Width="334" Foreground="Red" />
                                     <Button Content="Save" Height="33" HorizontalAlignment="Left" Margin="248,181,0,0" Name="rainSaveBtn" VerticalAlignment="Top" Width="92" Click="rainSaveBtnClick" />
-                                    <TextBlock Height="23" Margin="6,97,0,0" Name="staticTxtBlk4" Text="Rain gauge height:" VerticalAlignment="Top" HorizontalAlignment="Left" Width="109" />
-                                    <TextBox Height="23" HorizontalAlignment="Left" Margin="150,97,0,0" Name="rainHTxtBox" VerticalAlignment="Top" Width="55" />
-                                    <TextBlock Height="23" HorizontalAlignment="Left" Margin="6,125,0,0" Name="staticTxtBlk5" Text="Rain gauge diameter:" VerticalAlignment="Top" Width="122" />
-                                    <TextBox Height="23" HorizontalAlignment="Left" Margin="150,125,0,0" Name="rainDTxtBox" VerticalAlignment="Top" Width="55" />
-                                    <TextBlock Height="23" HorizontalAlignment="Left" Margin="6,152,0,0" Name="staticTxtBlk6" Text="Rain gauge weight:" VerticalAlignment="Top" Width="109" />
-                                    <Button Content="Acquire" Height="23" HorizontalAlignment="Left" Margin="211,151,0,0" Name="rainAcqBtn" VerticalAlignment="Top" Width="55" Click="rainAcqBtnClick" />
-                                    <TextBox Height="23" HorizontalAlignment="Left" Margin="150,152,0,0" Name="rainWTxtBox" VerticalAlignment="Top" Width="55" />
-                                    <TextBlock Height="23" HorizontalAlignment="Left" Margin="6,68,0,0" Name="staticTxtBlk7" Text="Calibrate before!" VerticalAlignment="Top" Width="334" Foreground="Red" />
+                                    <TextBlock Height="23" Margin="6,103,0,0" Name="staticTxtBlk4" Text="Rain gauge height:" VerticalAlignment="Top" HorizontalAlignment="Left" Width="109" />
+                                    <TextBox Height="23" HorizontalAlignment="Left" Margin="150,103,0,0" Name="rainHTxtBox" VerticalAlignment="Top" Width="55" />
+                                    <TextBlock Height="23" HorizontalAlignment="Left" Margin="6,131,0,0" Name="staticTxtBlk5" Text="Rain gauge diameter:" VerticalAlignment="Top" Width="122" />
+                                    <TextBox Height="23" HorizontalAlignment="Left" Margin="150,131,0,0" Name="rainDTxtBox" VerticalAlignment="Top" Width="55" />
+                                    <TextBlock Height="23" HorizontalAlignment="Left" Margin="6,158,0,0" Name="staticTxtBlk6" Text="Rain gauge weight:" VerticalAlignment="Top" Width="109" />
+                                    <TextBox Height="23" HorizontalAlignment="Left" Margin="150,158,0,0" Name="rainWTxtBox" VerticalAlignment="Top" Width="55" />
+                                    <TextBlock Height="23" HorizontalAlignment="Left" Margin="6,74,0,0" Name="staticTxtBlk7" Text="Calibrate before!" VerticalAlignment="Top" Width="334" Foreground="Red" />
                                 </Grid>
                             </GroupBox>
                         </Grid>
@@ -59,7 +58,7 @@
                     <GroupBox Header="Pooling Rate" Height="54" Margin="565,0,0,0" Name="groupBox4" VerticalAlignment="Top" HorizontalAlignment="Left" Width="188">
                         <Grid>
                             <ComboBox Height="25" HorizontalAlignment="Left" Margin="6,3,0,0" Name="poolBox" VerticalAlignment="Top" Width="67" />
-                            <Button Content="OK" Height="25" HorizontalAlignment="Left" Margin="112,3,0,0" Name="poolBtn" VerticalAlignment="Top" Width="58" Click="poolBtnClick" IsEnabled="False"/>
+                            <Button Content="OK" Height="25" HorizontalAlignment="Left" Margin="112,3,0,0" Name="poolBtn" VerticalAlignment="Top" Width="58" Click="poolBtnClick"/>
                         </Grid>
                     </GroupBox>
                 </Grid>

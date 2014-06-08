@@ -80,7 +80,8 @@ void loop()
   case DATA_TX:      
     {
       digitalWrite(13, 1);  
-      if(sendEEData() == SUCCESS) serialState = WAITING;
+      sendEEData();
+      serialState = WAITING;
       digitalWrite(13, 0);
       break;
     }
@@ -204,10 +205,18 @@ void update()
 
 boolean sendEEData()
 {  
+  byte packet[2];  
+  packet[0] = memoryFull ? 0xFF : 0x00;
+  packet[1] = INDEX;
+  sendPacket(packet, DATA_TX, 2);
+  if(INDEX == 0 && !memoryFull) return SUCCESS;
   byte _buffer[10];
   sensorData _data;  
-  while(INDEX >= 0)
+  int i = memoryFull ? INDEX : -1;
+  do
   {
+    i++;
+    if(i > 85) i = 0;
     while(!eeprom_is_ready());
     cli();   
     eeprom_read_block((void*)&_data, (void*)(sizeof(sensorData)*1), sizeof(sensorData));    
@@ -219,9 +228,9 @@ boolean sendEEData()
     }
     _buffer[8] = _data.time[0];
     _buffer[9] = _data.time[1]; 
-    if(sendPacket(_buffer, DATA_TX, 10)) INDEX--;
-  } 
-  return INDEX == 0;
+    if(!sendPacket(_buffer, DATA_TX, 10)) return ERROR;
+  } while(i != INDEX);
+  return SUCCESS;
 }
 
 boolean sendLiveData()
