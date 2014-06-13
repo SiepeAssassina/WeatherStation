@@ -12,9 +12,11 @@
                     <TextBlock FontFamily="Segoe UI" FontWeight="UltraLight" Height="23" HorizontalAlignment="Left" Margin="123,32,0,0" Name="NOWMINTempTxtBlk" Text="MIN --°C" VerticalAlignment="Top" Width="75" />
                     <TextBlock FontFamily="Segoe UI" FontSize="35" FontWeight="ExtraLight" Height="48" HorizontalAlignment="Left" Margin="286,3,0,0" Name="NOWPrssTxtBlk" Text="--mbar" VerticalAlignment="Top" Width="144" />
                     <TextBlock FontFamily="Segoe UI" FontSize="35" FontWeight="ExtraLight" Height="48" HorizontalAlignment="Left" Margin="286,57,0,0" Name="NOWHumTxtBlk" Text="--%RH" VerticalAlignment="Top" Width="144" />
-                    <Canvas Height="156" HorizontalAlignment="Left" Margin="7,112,0,0" Name="canvas1" VerticalAlignment="Top" Width="740" />
-                    <TextBlock Height="45" HorizontalAlignment="Left" Margin="523,6,0,0" Name="NOWDay" Text="TextBlock" VerticalAlignment="Top" Width="140" FontFamily="SegoeUI" FontSize="35" FontWeight="ExtraLight" Foreground="Black" />
+                    <TextBlock Height="45" HorizontalAlignment="Left" Margin="523,6,0,0" Name="NOWDay" Text="TextBlock" VerticalAlignment="Top" Width="198" FontFamily="SegoeUI" FontSize="35" FontWeight="ExtraLight" Foreground="Black" />
                     <TextBlock Height="21" HorizontalAlignment="Left" Margin="523,44,0,0" Name="NOWDate" Text="TextBlock" VerticalAlignment="Top" Width="70" FontFamily="Segoe UI" FontWeight="ExtraLight" FontSize="15" Foreground="Gray"/>
+                    <Image Height="120" HorizontalAlignment="Left" Margin="7,148,0,0" Name="sunnyImg" Stretch="Fill" VerticalAlignment="Top" Width="120"  />
+                    <Image Height="120" HorizontalAlignment="Left" Margin="318,148,0,0" Name="lightrainImg" Stretch="Fill" VerticalAlignment="Top" Width="120" />
+                    <Image Height="120" HorizontalAlignment="Left" Margin="627,148,0,0" Name="heavyrainImg" Stretch="Fill" VerticalAlignment="Top" Width="120"/>
                 </Grid>
             </TabItem>
             <TabItem Header="Settings and miscellaneous" Name="tabItem2" Background="White">

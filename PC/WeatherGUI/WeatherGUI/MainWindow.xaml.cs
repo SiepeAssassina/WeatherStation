@@ -2,33 +2,74 @@
 using System.Windows;
 using System.Threading;
 using System.IO;
+using System.Resources;
 using System.Windows.Shapes;
+using System.Windows.Media.Imaging;
 
 namespace WeatherGUI
 {
     public partial class MainWindow : Window, IMainWindow
     {
-        comHandler modem;
+        bool isOnline = false;       
+        public int pooling = 60000;
+        public float maxTemp = -20, minTemp = 50;
+        public int lastmm = 0;
+        public string[] poolRate = new string[] { "1s", "3s", "10s", "1m", "3m", "10m", "30m", "1h", "2h", "3h" };
+        comHandler modem;  
         FileManager file = new FileManager(System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location));
         sensorData data = new sensorData();
-        bool isOnline = false;
-        public  string[] poolRate = new string[] {"1s", "3s", "10s", "1m", "3m", "10m", "30m", "1h", "2h", "3h"};
-        public int pooling = 60000;
-        public float maxTemp = 0, minTemp = 50;
-        calibrationData calibration = new calibrationData();
+        calibrationData calibration = new calibrationData();        
+        BitmapImage sunny, sunnyDes, lightrain, lightrainDes, rain, rainDes;
+
         public MainWindow()
         {
-            InitializeComponent();           
+            InitializeComponent();
         }
-                
+
         private void Window_Loaded(object sender, RoutedEventArgs e)
-        {
-            calibration = file.readCalibrationData();
+        {            
+            try
+            {
+                sunny = new BitmapImage();
+                sunny.BeginInit();
+                sunny.UriSource = new Uri(@"pack://application:,,,/WeatherGUI;component/Resources/Sunny.png", UriKind.Absolute);
+                sunny.EndInit();
+
+                sunnyDes = new BitmapImage();
+                sunnyDes.BeginInit();
+                sunnyDes.UriSource = new Uri(@"pack://application:,,,/WeatherGUI;component/Resources/SunnyDes.png", UriKind.Absolute);
+                sunnyDes.EndInit();
+
+                lightrain = new BitmapImage();
+                lightrain.BeginInit();
+                lightrain.UriSource = new Uri(@"pack://application:,,,/WeatherGUI;component/Resources/SlightDrizzle.png", UriKind.Absolute);
+                lightrain.EndInit();
+
+                lightrainDes = new BitmapImage();
+                lightrainDes.BeginInit();
+                lightrainDes.UriSource = new Uri(@"pack://application:,,,/WeatherGUI;component/Resources/SlightDrizzleDes.png", UriKind.Absolute);
+                lightrainDes.EndInit();
+
+                rain = new BitmapImage();
+                rain.BeginInit();
+                rain.UriSource = new Uri(@"pack://application:,,,/WeatherGUI;component/Resources/Drizzle.png", UriKind.Absolute);
+                rain.EndInit();
+
+                rainDes = new BitmapImage();
+                rainDes.BeginInit();
+                rainDes.UriSource = new Uri(@"pack://application:,,,/WeatherGUI;component/Resources/DrizzleDes.png", UriKind.Absolute);
+                rainDes.EndInit(); 
+            }
+            catch (Exception exc) { MessageBox.Show(exc.ToString()); this.Close(); }
+            sunnyImg.Source = sunnyDes;
+            lightrainImg.Source = lightrainDes;
+            heavyrainImg.Source = rainDes;
             NOWDay.Text = DateTime.Now.DayOfWeek.ToString();
             NOWDate.Text = DateTime.Now.Date.ToString();
+
             foreach (string s in poolRate)
                 poolBox.Items.Add(s);
-            CRadioBtn.IsChecked = true;            
+            CRadioBtn.IsChecked = true;
             NOWMAXTempTxtBlk.Foreground = System.Windows.Media.Brushes.Red;
             NOWMINTempTxtBlk.Foreground = System.Windows.Media.Brushes.Blue;
             rawDataListBox.Items.Add("Temp -> ");
@@ -36,26 +77,26 @@ namespace WeatherGUI
             rawDataListBox.Items.Add("Humi -> ");
             rawDataListBox.Items.Add("Rain -> ");
             rawDataListBox.Items.Add("Vcc -> ");
-            poolBox.SelectedIndex = 5;            
+            poolBox.SelectedIndex = 5;
             calibrateLdCellBtn.IsEnabled = false;
             acqWGBtn.IsEnabled = false;
             clbTempBtn.IsEnabled = false;
             for (int i = 1; i < 20; i++) comSelectionBox.Items.Add("COM" + i);
-            comSelectionBox.SelectedIndex = 0;            
-            appendDebug("Loaded");           
+            comSelectionBox.SelectedIndex = 0;
+            appendDebug("Loaded");
         }
-        
+
         private void Window_Closing(object sender, EventArgs e)
         {
-            if (modem != null) 
-                modem.Close();   
+            if (modem != null)
+                modem.Close();
         }
 
         private void connectClick(object sender, RoutedEventArgs e)
         {
             button1.IsEnabled = false;
             if (!isOnline && modem == null)
-            {                              
+            {
                 modem = new comHandler(comSelectionBox.SelectedItem.ToString(), 600, (IMainWindow)this);
                 modem.pooling = pooling;
                 modem.Open();
@@ -70,22 +111,22 @@ namespace WeatherGUI
             }
             else
             {
-                modem.Close();                
+                modem.Close();
             }
             button1.IsEnabled = true;
             Thread.Sleep(10);
         }
 
         public void updateState(bool b)
-        {            
+        {
             Action action = new Action(() =>
             {
                 isOnline = b;
                 appendDebug(button1.Content + "ed!");
-                button1.Content = b ? "Disconnect" : "Connect";               
-                rstButton.IsEnabled = b;      
+                button1.Content = b ? "Disconnect" : "Connect";
+                rstButton.IsEnabled = b;
                 clbTempBtn.IsEnabled = b;
-                acqWGBtn.IsEnabled = b;                
+                acqWGBtn.IsEnabled = b;
                 calibrateLdCellBtn.IsEnabled = b;
             });
             this.Dispatcher.BeginInvoke(action, System.Windows.Threading.DispatcherPriority.Send);
@@ -103,7 +144,7 @@ namespace WeatherGUI
         }
 
         public void updateRawData(sensorData buffer)
-        { 
+        {
             Action action = new Action(() =>
             {
                 float bandGap = buffer.bandGap / 100F;
@@ -133,7 +174,7 @@ namespace WeatherGUI
         private void Exit_Click(object sender, RoutedEventArgs e)
         {
             if (modem != null)
-            {               
+            {
                 modem.Close();
             }
             Environment.Exit(0x00);
@@ -157,12 +198,12 @@ namespace WeatherGUI
             else if (item.Contains("m")) index = 60;
             else if (item.Contains("h")) index = 3600;
             pooling = index * Int16.Parse(item.Remove(item.Length - 1)) * 1000;
-            if (isOnline) modem.pooling = pooling;   
+            if (isOnline) modem.pooling = pooling;
         }
 
         private void calibrateLdCellBtnClick(object sender, RoutedEventArgs e)
         {
-            int userWeight;            
+            int userWeight;
             try
             {
                 userWeight = Int16.Parse(rainSampleWTxtBox.Text);
@@ -189,14 +230,14 @@ namespace WeatherGUI
                 MessageBox.Show(exc.ToString());
                 return;
             }
-           
+
         }
 
         private void clbTempBtnClick(object sender, RoutedEventArgs e)
         {
-            float sampleTemp;           
+            float sampleTemp;
             try
-            {                
+            {
                 sampleTemp = float.Parse(userTempTxtBox.Text) + 273.15F;
                 sensorData buffer = modem.asyncronousUpdate();
                 calibration.tempK = (sampleTemp) / buffer.value[0];
@@ -216,13 +257,13 @@ namespace WeatherGUI
             {
                 MessageBox.Show(exc.ToString());
                 return;
-            }            
-        }     
+            }
+        }
 
         private void rainSaveBtnClick(object sender, RoutedEventArgs e)
         {
             try
-            {               
+            {
                 calibration.gaugeArea = float.Parse(rainDTxtBox.Text);
                 calibration.gaugeWeight = float.Parse(rainWTxtBox.Text);
                 file.writeCalibrationData(calibration);
@@ -249,17 +290,5 @@ namespace WeatherGUI
             sensorData buffer = modem.asyncronousUpdate();
             rainWTxtBox.Text = ((buffer.value[3] - calibration.zero) * calibration.weightK).ToString();
         }
-
-        private void plotDateSelectedDateChanged()
-        {
-            Line line = new Line();
-            line.Stroke = System.Windows.Media.Brushes.Red;
-            line.StrokeThickness = 2;
-            line.X1 = 100;
-            line.X2 = 12;
-            line.Y1 = 107;
-            line.Y2 = 14;
-            canvas1.Children.Add(line);
-        }            
-    }
+    }       
 }
