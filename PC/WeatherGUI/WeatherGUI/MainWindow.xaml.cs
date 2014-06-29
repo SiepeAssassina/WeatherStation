@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Windows;
 using System.Threading;
-using System.IO;
-using System.Resources;
-using System.Windows.Shapes;
+using System.Diagnostics;
 using System.Windows.Media.Imaging;
 
 namespace WeatherGUI
@@ -12,10 +10,12 @@ namespace WeatherGUI
     {
         bool isOnline = false;       
         public int pooling = 60000;
-        public float maxTemp = -20, minTemp = 50;
-        public int lastmm = 0;
+        public int weatherStatus = 0;
+        public float? maxTemp = null, minTemp = null;
+        public float lastP = 0;
         public string[] poolRate = new string[] { "1s", "3s", "10s", "1m", "3m", "10m", "30m", "1h", "2h", "3h" };
-        comHandler modem;  
+        comHandler modem;
+        Stopwatch wtc = new Stopwatch();
         FileManager file = new FileManager(System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location));
         sensorData data = new sensorData();
         calibrationData calibration = new calibrationData();        
@@ -76,13 +76,14 @@ namespace WeatherGUI
             rawDataListBox.Items.Add("Pres -> ");
             rawDataListBox.Items.Add("Humi -> ");
             rawDataListBox.Items.Add("Rain -> ");
-            rawDataListBox.Items.Add("Vcc -> ");
+            rawDataListBox.Items.Add("Vcc  -> ");
             poolBox.SelectedIndex = 5;
             calibrateLdCellBtn.IsEnabled = false;
             acqWGBtn.IsEnabled = false;
             clbTempBtn.IsEnabled = false;
             for (int i = 1; i < 20; i++) comSelectionBox.Items.Add("COM" + i);
             comSelectionBox.SelectedIndex = 0;
+            calibration = file.readCalibrationData();
             appendDebug("Loaded");
         }
 
@@ -144,28 +145,74 @@ namespace WeatherGUI
         }
 
         public void updateRawData(sensorData buffer)
-        {
+        {         
             Action action = new Action(() =>
             {
+                wtc.Start();
                 float bandGap = buffer.bandGap / 100F;
                 float temp = (buffer.value[0] * calibration.tempK) - 273.15F;
                 float P = (float)((buffer.value[1] / (1024 * 0.009)) + (0.095 / 0.009));
-                int RH = (int)((buffer.value[2] / (1024 * 0.00636)) - (0.1515 / 0.00636));
+                float RH = (float)((buffer.value[2] / (1024 * 0.00636)) - (0.1515 / 0.00636));
                 float weight = (buffer.value[3] - calibration.zero) * calibration.weightK;
+                float rainMM = (((weight - calibration.gaugeWeight) * 1000F) / calibration.gaugeArea);
                 rawDataListBox.Items[0] = "Temp -> " + buffer.value[0] + " (" + temp.ToString("0.0") + " °C)";
                 rawDataListBox.Items[1] = "Pres -> " + buffer.value[1] + " (" + P + " kPa)";
-                rawDataListBox.Items[2] = "Humi -> " + buffer.value[2] + " (" + RH + " %RH)";
+                rawDataListBox.Items[2] = "Humi -> " + buffer.value[2] + " (" + RH.ToString("0.0") +" %RH)";
                 rawDataListBox.Items[3] = "Rain -> " + buffer.value[3] + " (" + weight + " g)";
-                rawDataListBox.Items[4] = "Vcc -> " + buffer.bandGap + " (" + bandGap + " V)";
+                rawDataListBox.Items[4] = "Vcc  -> " + buffer.bandGap + " (" + bandGap + " V)";
                 currentTempTxtBlk.Text = "Current temp: " + (int)temp + "°C";
                 NOWTempTxtBlk.Text = temp.ToString("0.0") + "°C";
                 NOWPrssTxtBlk.Text = (int)(P * 10F) + "mbar";
                 NOWHumTxtBlk.Text = (int)RH + "%RH";
-                NOWRainTxtBlk.Text = (int)(((weight - calibration.gaugeWeight) * 1000F) / calibration.gaugeArea) + "mm";
+                NOWRainTxtBlk.Text = rainMM.ToString("0.0") +"mm";
+                if (maxTemp == null || minTemp == null)
+                {
+                    maxTemp = temp;
+                    minTemp = temp;
+                }
                 maxTemp = maxTemp < temp ? temp : maxTemp;
                 minTemp = minTemp > temp ? temp : minTemp;
                 NOWMAXTempTxtBlk.Text = (int)maxTemp + "°C";
                 NOWMINTempTxtBlk.Text = (int)minTemp + "°C";
+                if (lastP == 0)
+                {
+                    lastP = P;
+                    if (P >= 100) sunnyImg.Source = sunny;
+                    if (P < 100) lightrainImg.Source = lightrain;                    
+                }
+                if (wtc.Elapsed.Hours > 0)
+                {
+                    float dP = P - lastP;
+                    if (dP >= 1) weatherStatus--;
+                    if (dP <= -1) weatherStatus++;
+                    if (weatherStatus <= 0)
+                    {
+                        weatherStatus = 0;
+                        sunnyImg.Source = sunny;
+                        lightrainImg.Source = lightrainDes;
+                        heavyrainImg.Source = rainDes;
+                    }
+                    if (weatherStatus == 2)
+                    {
+                        sunnyImg.Source = sunnyDes;
+                        lightrainImg.Source = lightrain;
+                        heavyrainImg.Source = rainDes; 
+                    }
+                    if (weatherStatus >= 3)
+                    {
+                        weatherStatus = 3;
+                        sunnyImg.Source = sunnyDes;
+                        lightrainImg.Source = lightrainDes;
+                        heavyrainImg.Source = rain;
+                    }
+                    wtc.Restart();
+                }
+                weatherData wData = new weatherData(temp, P, RH, rainMM);
+                Thread thread = new Thread(() =>
+                {
+                    file.writeWeatherData(wData);
+                });
+                thread.Start();
                 data = buffer;
             });
             this.Dispatcher.BeginInvoke(action, System.Windows.Threading.DispatcherPriority.ApplicationIdle);

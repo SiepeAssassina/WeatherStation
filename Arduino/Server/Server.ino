@@ -338,7 +338,3 @@ int getVCC()
   int VCC =(((InternalRef * 1024L) / mean) + 5L) / 10L;
   return VCC;
 }
-
-
-
-
